@@ -1,4 +1,5 @@
-const ITERATIONS = 210_000;
+// ponytail: Workers WebCrypto rejects PBKDF2 over 100k. Raise when CF lifts the cap, or swap to a WASM KDF.
+const ITERATIONS = 100_000;
 const KEY_BITS = 256;
 
 function buf(bytes: Uint8Array): ArrayBuffer {

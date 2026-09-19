@@ -1,6 +1,7 @@
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { handleSetup, handleSetupNeeded } from "../src/server/auth";
+import { hashPassword, verifyPassword } from "../src/server/password";
 import { handleForm, handleListForms, handlePublish } from "../src/server/forms";
 import { tableName } from "../src/server/formTable";
 import { handlePublicSubmit, handlePublicUpload } from "../src/server/submissions";
@@ -51,6 +52,12 @@ const baseSchema: FormSchema = {
 };
 
 describe("form flow", () => {
+  it("hashes passwords at the Workers PBKDF2 cap", async () => {
+    const stored = await hashPassword("password1");
+    expect(stored.startsWith("pbkdf2$100000$")).toBe(true);
+    expect(await verifyPassword("password1", stored)).toBe(true);
+  });
+
   it("setup, publish CREATE, ALTER, pdf/png, submit, email column, R2", async () => {
     const needed = await handleSetupNeeded();
     expect(await needed.json()).toEqual({ needed: true });
