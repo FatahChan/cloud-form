@@ -1,9 +1,21 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "cloud-form",
-  "main": "@tanstack/react-start/server-entry",
-  "compatibility_date": "2026-09-19",
-  "compatibility_flags": ["nodejs_compat"],
-  "d1_databases": [{ "binding": "DB", "migrations_dir": "migrations" }],
-  "r2_buckets": [{ "binding": "FILES" }]
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "cloud-form",
+	"main": "@tanstack/react-start/server-entry",
+	"compatibility_date": "2026-09-19",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"migrations_dir": "migrations",
+		}
+	],
+	"r2_buckets": [
+		{
+			"binding": "FILES",
+			"bucket_name": "cloud-form-files"
+		}
+	]
 }
