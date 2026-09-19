@@ -4,13 +4,14 @@ import { handleAudit, handleSetup, handleSetupNeeded } from "../src/server/auth"
 import { hashPassword, verifyPassword } from "../src/server/password";
 import { handleForm, handleListForms, handlePublish } from "../src/server/forms";
 import { tableName } from "../src/server/formTable";
-import { handlePublicSubmit, handlePublicUpload } from "../src/server/submissions";
+import { handleInbox, handlePublicSubmit, handlePublicUpload } from "../src/server/submissions";
 import { unpublishedChanges, newQuestion, parseAnswers, type FormSchema } from "../src/shared/schema";
 import { slugify } from "../src/shared/slug";
 
 const EMAIL_ID = "33333333-3333-4333-8333-333333333333";
 const FILE_ID = "22222222-2222-4222-8222-222222222222";
 const EXTRA_ID = "44444444-4444-4444-8444-444444444444";
+const PHONE_ID = "55555555-5555-4555-8555-555555555555";
 
 function req(path: string, init: RequestInit = {}, cookie?: string): Request {
   const headers = new Headers(init.headers);
@@ -114,6 +115,7 @@ describe("form flow", () => {
       questions: [
         ...baseSchema.questions,
         { type: "short_text", id: EXTRA_ID, slug: "company", title: "Company", required: false },
+        { type: "phone", id: PHONE_ID, slug: "phone", title: "Phone", required: false },
       ],
     };
     const put2 = await handleForm(
@@ -121,6 +123,10 @@ describe("form flow", () => {
       form.id,
     );
     expect(put2.status).toBe(200);
+    const inboxDraft = await handleInbox(req("/api/forms/" + form.id + "/submissions", {}, cookie), form.id);
+    expect(
+      ((await inboxDraft.json()) as { schema: FormSchema }).schema.questions.some((q) => q.type === "phone"),
+    ).toBe(true);
     const pub2 = await handlePublish(
       req("/api/forms/" + form.id + "/publish", { method: "POST", body: JSON.stringify({ published: true }) }, cookie),
       form.id,
@@ -154,6 +160,7 @@ describe("form flow", () => {
           answers: {
             [EMAIL_ID]: "ada@x.com",
             [FILE_ID]: { uploadId },
+            [PHONE_ID]: "+20 10 1234 5678",
           },
         }),
       }),
@@ -170,6 +177,14 @@ describe("form flow", () => {
     expect(fileRow?.r2_key).toMatch(/^submissions\//);
     const obj = await env.FILES.get(fileRow!.r2_key);
     expect(obj).toBeTruthy();
+
+    const inbox = await handleInbox(req("/api/forms/" + form.id + "/submissions", {}, cookie), form.id);
+    const listed = (await inbox.json()) as {
+      submissions: Record<string, unknown>[];
+      files: { filename: string; question_id: string }[];
+    };
+    expect(listed.submissions[0]?.phone).toBe("+201012345678");
+    expect(listed.files.some((f) => f.filename === "cv.pdf" && f.question_id === FILE_ID)).toBe(true);
   });
 });
 
@@ -200,9 +215,7 @@ describe("slugify", () => {
     expect(slugify("How old are you?", new Set())).toBe("how_old_are_you");
     expect(slugify("!!!", new Set())).toBe("field");
     const q = newQuestion("number", new Set());
-    expect(q.type).toBe("number");
-    expect(q.slug).toBe("field");
-    expect(q.title).toBe("");
+    expect(q).toMatchObject({ type: "number", slug: "field", title: "" });
   });
 });
 

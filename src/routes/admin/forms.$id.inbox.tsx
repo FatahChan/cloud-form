@@ -9,7 +9,29 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api, ApiError } from "~/lib/api";
-import { columnQuestions, type FormSchema } from "~/shared/schema";
+import { columnQuestions, type ColumnQuestion, type FormSchema } from "~/shared/schema";
+
+type InboxFile = { id: string; submission_id?: string; filename: string; question_id: string };
+
+function fileHref(formId: string, sid: string, fileId: string) {
+  return "/api/forms/" + formId + "/submissions/" + sid + "/files/" + fileId;
+}
+
+function FileLink(props: { formId: string; sid: string; file: InboxFile }) {
+  return (
+    <Button variant="link" className="h-auto p-0" asChild>
+      <a href={fileHref(props.formId, props.sid, props.file.id)}>{props.file.filename}</a>
+    </Button>
+  );
+}
+
+function answer(formId: string, sid: string, q: ColumnQuestion, value: unknown, files: InboxFile[]) {
+  if (q.type === "file") {
+    const f = files.find((x) => x.question_id === q.id && (!x.submission_id || x.submission_id === sid));
+    return f ? <FileLink formId={formId} sid={sid} file={f} /> : null;
+  }
+  return String(value ?? "");
+}
 
 export const Route = createFileRoute("/admin/forms/$id/inbox")({
   component: InboxPage,
@@ -19,11 +41,12 @@ function InboxPage() {
   const { id } = Route.useParams();
   const [schema, setSchema] = useState<FormSchema | null>(null);
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
+  const [files, setFiles] = useState<InboxFile[]>([]);
   const [slug, setSlug] = useState("");
   const [q, setQ] = useState("");
   const [detail, setDetail] = useState<{
     submission: Record<string, unknown>;
-    files: { id: string; filename: string; question_id: string }[];
+    files: InboxFile[];
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const cols = useMemo(() => (schema ? columnQuestions(schema) : []), [schema]);
@@ -33,11 +56,12 @@ function InboxPage() {
       filter?.slug && filter.q
         ? `?slug=${encodeURIComponent(filter.slug)}&q=${encodeURIComponent(filter.q)}`
         : "";
-    const data = await api<{ schema: FormSchema; submissions: Record<string, unknown>[] }>(
+    const data = await api<{ schema: FormSchema; submissions: Record<string, unknown>[]; files: InboxFile[] }>(
       "/api/forms/" + id + "/submissions" + qs,
     );
     setSchema(data.schema);
     setRows(data.submissions);
+    setFiles(data.files ?? []);
   }
 
   useEffect(() => {
@@ -87,12 +111,12 @@ function InboxPage() {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
-      <div className="rounded-xl border bg-card">
+      <div className="overflow-x-auto rounded-xl border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>When</TableHead>
-              {cols.slice(0, 4).map((c) => (
+              {cols.map((c) => (
                 <TableHead key={c.id}>{c.title}</TableHead>
               ))}
             </TableRow>
@@ -100,7 +124,7 @@ function InboxPage() {
           <TableBody>
             {rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={1 + Math.min(4, cols.length)} className="text-muted-foreground">
+                <TableCell colSpan={1 + cols.length} className="text-muted-foreground">
                   No submissions.
                 </TableCell>
               </TableRow>
@@ -115,7 +139,7 @@ function InboxPage() {
                       onClick={() => {
                         void api<{
                           submission: Record<string, unknown>;
-                          files: { id: string; filename: string; question_id: string }[];
+                          files: InboxFile[];
                         }>("/api/forms/" + id + "/submissions/" + String(row.id))
                           .then(setDetail)
                           .catch((e) => setError(e instanceof ApiError ? e.message : "Failed"));
@@ -124,8 +148,8 @@ function InboxPage() {
                       {row.created_at ? new Date(Number(row.created_at)).toLocaleString() : String(row.id)}
                     </Button>
                   </TableCell>
-                  {cols.slice(0, 4).map((c) => (
-                    <TableCell key={c.id}>{String(row[c.slug] ?? "")}</TableCell>
+                  {cols.map((c) => (
+                    <TableCell key={c.id}>{answer(id, String(row.id), c, row[c.slug], files)}</TableCell>
                   ))}
                 </TableRow>
               ))
@@ -139,19 +163,12 @@ function InboxPage() {
             <CardTitle>Submission</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-3">
-            {columnQuestions(schema).map((c) => (
+            {cols.map((c) => (
               <p key={c.id} className="text-sm">
                 <span className="font-medium">{c.title}</span>{" "}
-                <span className="text-muted-foreground">{String(detail.submission[c.slug] ?? "")}</span>
-              </p>
-            ))}
-            {detail.files.map((f) => (
-              <p key={f.id}>
-                <Button variant="link" className="h-auto p-0" asChild>
-                  <a href={"/api/forms/" + id + "/submissions/" + String(detail.submission.id) + "/files/" + f.id}>
-                    {f.filename}
-                  </a>
-                </Button>
+                <span className="text-muted-foreground">
+                  {answer(id, String(detail.submission.id), c, detail.submission[c.slug], detail.files)}
+                </span>
               </p>
             ))}
           </CardContent>

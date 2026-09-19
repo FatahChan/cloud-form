@@ -125,27 +125,34 @@ export async function handleInbox(request: Request, formId: string): Promise<Res
   if (s instanceof Response) return s;
   const row = await env.DB.prepare("SELECT * FROM forms WHERE id = ?").bind(formId).first<FormRow>();
   if (!row) return authed(err("Not found", 404), s.setCookie);
-  const { published, schema } = parseStored(row);
-  const use = published ?? schema;
+  const { schema } = parseStored(row);
   const table = tableName(formId);
   const exists = await env.DB.prepare("SELECT 1 AS n FROM sqlite_master WHERE type = 'table' AND name = ?")
     .bind(table)
     .first();
-  if (!exists) return authed(json({ schema: use, submissions: [] }), s.setCookie);
+  if (!exists) return authed(json({ schema, submissions: [], files: [] }), s.setCookie);
   const url = new URL(request.url);
   const slug = url.searchParams.get("slug");
   const q = url.searchParams.get("q");
-  let sql = `SELECT * FROM ${table} ORDER BY created_at DESC LIMIT 200`;
+  let from = `FROM ${table} ORDER BY created_at DESC LIMIT 200`;
   const binds: string[] = [];
   if (slug && q) {
-    const col = use.questions.find((x) => x.type !== "statement" && x.slug === slug);
+    const col = schema.questions.find((x) => x.type !== "statement" && x.slug === slug);
     if (!col || col.type === "statement") return authed(err("Unknown field", 400), s.setCookie);
-    sql = `SELECT * FROM ${table} WHERE "${columnName(col.slug)}" = ? ORDER BY created_at DESC LIMIT 200`;
+    const info = await env.DB.prepare(`PRAGMA table_info(${table})`).all<{ name: string }>();
+    if (!(info.results ?? []).some((c) => c.name === columnName(col.slug))) {
+      return authed(json({ schema, submissions: [], files: [] }), s.setCookie);
+    }
+    from = `FROM ${table} WHERE "${columnName(col.slug)}" = ? ORDER BY created_at DESC LIMIT 200`;
     binds.push(col.type === "email" ? q.trim().toLowerCase() : col.type === "phone" ? (normalizePhone(q) ?? q.trim()) : q);
   }
-  const stmt = env.DB.prepare(sql);
-  const { results } = binds.length ? await stmt.bind(...binds).all() : await stmt.all();
-  return authed(json({ schema: use, submissions: results }), s.setCookie);
+  const select = env.DB.prepare(`SELECT * ${from}`);
+  const filesQ = env.DB.prepare(
+    `SELECT id, submission_id, question_id, filename FROM files WHERE submission_id IN (SELECT id ${from})`,
+  );
+  const { results } = binds.length ? await select.bind(...binds).all() : await select.all();
+  const { results: files } = binds.length ? await filesQ.bind(...binds).all() : await filesQ.all();
+  return authed(json({ schema, submissions: results, files: files ?? [] }), s.setCookie);
 }
 
 export async function handleSubmission(request: Request, formId: string, sid: string): Promise<Response> {
@@ -153,13 +160,12 @@ export async function handleSubmission(request: Request, formId: string, sid: st
   if (s instanceof Response) return s;
   const row = await env.DB.prepare("SELECT * FROM forms WHERE id = ?").bind(formId).first<FormRow>();
   if (!row) return authed(err("Not found", 404), s.setCookie);
-  const { published, schema } = parseStored(row);
-  const use = published ?? schema;
+  const { schema } = parseStored(row);
   const table = tableName(formId);
   const sub = await env.DB.prepare(`SELECT * FROM ${table} WHERE id = ?`).bind(sid).first();
   if (!sub) return authed(err("Not found", 404), s.setCookie);
   const { results: files } = await env.DB.prepare("SELECT * FROM files WHERE submission_id = ?").bind(sid).all();
-  return authed(json({ schema: use, submission: sub, files: files ?? [] }), s.setCookie);
+  return authed(json({ schema, submission: sub, files: files ?? [] }), s.setCookie);
 }
 
 export async function handleDownload(request: Request, formId: string, sid: string, fileId: string): Promise<Response> {
