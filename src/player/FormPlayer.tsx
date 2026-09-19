@@ -6,10 +6,12 @@ import { Kbd } from "@/components/ui/kbd";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { api, ApiError } from "~/lib/api";
+import { PhoneField } from "./PhoneField";
 import {
   acceptAttr,
   FILE_KINDS,
   liveQuestions,
+  normalizePhone,
   type FileKind,
   type FormSchema,
   type Question,
@@ -82,6 +84,9 @@ export function FormPlayer({ schema, mode, slug, screen }: Props) {
     if (question.type === "multi_select" && Array.isArray(v) && v.length === 0) return "This question is required";
     if (question.type === "email" && typeof v === "string") {
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim())) return "Enter a valid email";
+    }
+    if (question.type === "phone" && typeof v === "string") {
+      if (!normalizePhone(v)) return "Enter a valid phone number";
     }
     if (question.type === "file" && !(v && typeof v === "object" && "uploadId" in v)) return "Add a file";
     return null;
@@ -284,11 +289,17 @@ function Field(props: {
         autoFocus
         className="h-11 text-base"
         type={q.type === "email" ? "email" : "text"}
+        autoComplete={q.type === "email" ? "email" : undefined}
         aria-label={q.title}
         placeholder={q.placeholder}
         value={typeof value === "string" ? value : ""}
         onChange={(e) => onChange(e.target.value)}
       />
+    );
+  }
+  if (q.type === "phone") {
+    return (
+      <PhoneField value={value} onChange={(v) => onChange(v)} title={q.title} placeholder={q.placeholder} />
     );
   }
   if (q.type === "long_text") {

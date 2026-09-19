@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { Link, createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Page } from "@/components/page";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -11,7 +11,7 @@ export const Route = createFileRoute("/admin/audit")({
 
 function AuditPage() {
   const [events, setEvents] = useState<
-    { id: string; actor_id: string | null; action: string; entity_type: string; entity_id: string | null; created_at: number }[]
+    { id: string; actor: string | null; action: string; entity_type: string; entity_id: string | null; entity: string | null; created_at: number }[]
   >([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,9 +44,15 @@ function AuditPage() {
                 <TableCell className="text-muted-foreground">{new Date(e.created_at).toLocaleString()}</TableCell>
                 <TableCell className="font-medium">{e.action}</TableCell>
                 <TableCell>
-                  {e.entity_type} {e.entity_id ?? ""}
+                  {e.entity_type === "form" && e.entity_id && e.entity ? (
+                    <Link to="/admin/forms/$id" params={{ id: e.entity_id }} className="hover:underline">
+                      {e.entity}
+                    </Link>
+                  ) : (
+                    `${e.entity_type} ${e.entity_id ?? ""}`.trim()
+                  )}
                 </TableCell>
-                <TableCell className="font-mono text-xs">{e.actor_id ?? ""}</TableCell>
+                <TableCell>{e.actor ?? ""}</TableCell>
               </TableRow>
             ))}
           </TableBody>

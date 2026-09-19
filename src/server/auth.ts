@@ -133,7 +133,11 @@ export async function handleAudit(request: Request): Promise<Response> {
   if (s instanceof Response) return s;
   const limit = Math.min(50, Number(new URL(request.url).searchParams.get("limit") ?? 50) || 50);
   const { results } = await env.DB.prepare(
-    "SELECT id, actor_id, action, entity_type, entity_id, meta, created_at FROM audit_log ORDER BY created_at DESC LIMIT ?",
+    `SELECT a.id, u.email AS actor, a.action, a.entity_type, a.entity_id, f.title AS entity, a.meta, a.created_at
+     FROM audit_log a
+     LEFT JOIN users u ON u.id = a.actor_id
+     LEFT JOIN forms f ON a.entity_type = 'form' AND f.id = a.entity_id
+     ORDER BY a.created_at DESC LIMIT ?`,
   )
     .bind(limit)
     .all();

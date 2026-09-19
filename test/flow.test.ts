@@ -1,11 +1,11 @@
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { handleSetup, handleSetupNeeded } from "../src/server/auth";
+import { handleAudit, handleSetup, handleSetupNeeded } from "../src/server/auth";
 import { hashPassword, verifyPassword } from "../src/server/password";
 import { handleForm, handleListForms, handlePublish } from "../src/server/forms";
 import { tableName } from "../src/server/formTable";
 import { handlePublicSubmit, handlePublicUpload } from "../src/server/submissions";
-import { unpublishedChanges, newQuestion, type FormSchema } from "../src/shared/schema";
+import { unpublishedChanges, newQuestion, parseAnswers, type FormSchema } from "../src/shared/schema";
 import { slugify } from "../src/shared/slug";
 
 const EMAIL_ID = "33333333-3333-4333-8333-333333333333";
@@ -71,10 +71,20 @@ describe("form flow", () => {
     expect(setup.status).toBe(200);
     const cookie = sid(setup);
 
+    const audit = await handleAudit(req("/api/audit", {}, cookie));
+    expect(((await audit.json()) as { events: { actor: string }[] }).events[0]?.actor).toBe("owner@x.com");
+
     const created = await handleListForms(req("/api/forms", { method: "POST", body: JSON.stringify({ title: "Job" }) }, cookie));
     expect(created.status).toBe(200);
     const form = (await created.json()) as { id: string; slug: string; title: string };
     const table = tableName(form.id);
+
+    const afterCreate = await handleAudit(req("/api/audit", {}, cookie));
+    expect(((await afterCreate.json()) as { events: { action: string; entity: string; entity_id: string }[] }).events[0]).toMatchObject({
+      action: "form.create",
+      entity: "Job",
+      entity_id: form.id,
+    });
 
     const put = await handleForm(
       req("/api/forms/" + form.id, { method: "PUT", body: JSON.stringify({ title: "Job", schema: baseSchema }) }, cookie),
@@ -193,5 +203,26 @@ describe("slugify", () => {
     expect(q.type).toBe("number");
     expect(q.slug).toBe("field");
     expect(q.title).toBe("");
+  });
+});
+
+describe("parseAnswers phone", () => {
+  const schema: FormSchema = {
+    welcome: { title: "H", button: "Go" },
+    questions: [{ type: "phone", id: EXTRA_ID, slug: "phone", title: "Phone", required: true }],
+    ending: { title: "T" },
+  };
+
+  it("stores digits and rejects junk", () => {
+    expect(parseAnswers(schema, { [EXTRA_ID]: "+20 10 1234 5678" })).toEqual({
+      ok: true,
+      data: { [EXTRA_ID]: "+201012345678" },
+    });
+    expect(parseAnswers(schema, { [EXTRA_ID]: "+1 213 373 4253" })).toEqual({
+      ok: true,
+      data: { [EXTRA_ID]: "+12133734253" },
+    });
+    expect(parseAnswers(schema, { [EXTRA_ID]: "(555) 123-4567" }).ok).toBe(false);
+    expect(parseAnswers(schema, { [EXTRA_ID]: "nope" }).ok).toBe(false);
   });
 });

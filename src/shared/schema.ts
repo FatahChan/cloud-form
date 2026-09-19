@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parsePhoneNumberFromString } from "libphonenumber-js";
 import { slugify } from "./slug";
 
 export const FILE_KINDS = {
@@ -55,6 +56,7 @@ export const questionSchema = z.discriminatedUnion("type", [
   textLike.extend({ type: z.literal("short_text") }),
   textLike.extend({ type: z.literal("long_text") }),
   textLike.extend({ type: z.literal("email") }),
+  textLike.extend({ type: z.literal("phone") }),
   z.object({
     type: z.literal("number"),
     ...baseQ,
@@ -180,6 +182,12 @@ export function fileKindFor(filename: string, mime: string): FileKind | null {
 
 export type Answers = Record<string, unknown>;
 
+export function normalizePhone(raw: string): string | null {
+  const parsed = parsePhoneNumberFromString(raw.trim());
+  if (!parsed?.isValid()) return null;
+  return parsed.number;
+}
+
 export function parseAnswers(
   schema: FormSchema,
   body: unknown,
@@ -211,6 +219,13 @@ export function parseAnswers(
         const t = v.trim().toLowerCase();
         const er = z.string().email().safeParse(t);
         if (!er.success) return { ok: false, error: `${q.title} must be an email` };
+        out[q.id] = t;
+        break;
+      }
+      case "phone": {
+        if (typeof v !== "string") return { ok: false, error: `${q.title} must be a phone number` };
+        const t = normalizePhone(v);
+        if (!t) return { ok: false, error: `${q.title} must be a phone number` };
         out[q.id] = t;
         break;
       }

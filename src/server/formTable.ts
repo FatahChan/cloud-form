@@ -44,13 +44,13 @@ export async function diffAndMigrate(opts: {
     statements.push(`CREATE TABLE ${table} (id TEXT PRIMARY KEY, created_at INTEGER NOT NULL${extra})`);
     statements.push(`CREATE INDEX ${table}_created_at ON ${table}(created_at)`);
     for (const q of nextCols) {
-      if (q.type === "email") statements.push(`CREATE INDEX ${table}_${columnName(q.slug)} ON ${table}(${ident(q.slug)})`);
+      if (q.type === "email" || q.type === "phone") statements.push(`CREATE INDEX ${table}_${columnName(q.slug)} ON ${table}(${ident(q.slug)})`);
     }
   } else {
     for (const q of nextCols) {
       if (oldIds.has(q.id)) continue;
       statements.push(`ALTER TABLE ${table} ADD COLUMN ${ident(q.slug)} ${sqlType(q)}`);
-      if (q.type === "email") {
+      if (q.type === "email" || q.type === "phone") {
         statements.push(`CREATE INDEX ${table}_${columnName(q.slug)} ON ${table}(${ident(q.slug)})`);
       }
     }

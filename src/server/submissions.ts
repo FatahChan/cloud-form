@@ -1,6 +1,7 @@
 import {
   fileKindFor,
   liveQuestions,
+  normalizePhone,
   parseAnswers,
   type ColumnQuestion,
   type FormSchema,
@@ -140,7 +141,7 @@ export async function handleInbox(request: Request, formId: string): Promise<Res
     const col = use.questions.find((x) => x.type !== "statement" && x.slug === slug);
     if (!col || col.type === "statement") return authed(err("Unknown field", 400), s.setCookie);
     sql = `SELECT * FROM ${table} WHERE "${columnName(col.slug)}" = ? ORDER BY created_at DESC LIMIT 200`;
-    binds.push(col.type === "email" ? q.trim().toLowerCase() : q);
+    binds.push(col.type === "email" ? q.trim().toLowerCase() : col.type === "phone" ? (normalizePhone(q) ?? q.trim()) : q);
   }
   const stmt = env.DB.prepare(sql);
   const { results } = binds.length ? await stmt.bind(...binds).all() : await stmt.all();

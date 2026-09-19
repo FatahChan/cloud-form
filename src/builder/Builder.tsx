@@ -23,6 +23,7 @@ const TYPES: Question["type"][] = [
   "short_text",
   "long_text",
   "email",
+  "phone",
   "number",
   "select",
   "multi_select",
