@@ -10,7 +10,6 @@ const src = fileURLToPath(new URL("./src", import.meta.url));
 export default defineConfig({
   server: { port: 3000 },
   resolve: {
-    tsconfigPaths: true,
     alias: { "~": src, "@": src },
   },
   plugins: [cloudflare({ viteEnvironment: { name: "ssr" } }), tanstackStart(), react(), tailwindcss()],

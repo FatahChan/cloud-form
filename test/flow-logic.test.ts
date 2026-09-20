@@ -173,9 +173,9 @@ describe("flow engine", () => {
   });
 
   it("removePage moves questions onto the previous page", () => {
-    const next = removePage(schema(), P2);
-    expect(next.pages.map((p) => p.id)).toEqual([P1, P3]);
-    expect(next.pages[0]?.questionIds).toEqual([Q_GENDER, Q_MARRIED]);
-    expect(next.pages[1]?.questionIds).toEqual([Q_JOB]);
+    const pages = removePage(schema(), P2).pages ?? [];
+    expect(pages.map((p) => p.id)).toEqual([P1, P3]);
+    expect(pages[0]?.questionIds).toEqual([Q_GENDER, Q_MARRIED]);
+    expect(pages[1]?.questionIds).toEqual([Q_JOB]);
   });
 });

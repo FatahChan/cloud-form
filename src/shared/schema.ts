@@ -352,8 +352,9 @@ export function fileKindFor(filename: string, mime: string): FileKind | null {
   const lower = filename.toLowerCase();
   const dot = lower.lastIndexOf(".");
   const ext = dot >= 0 ? lower.slice(dot) : "";
-  for (const [kind, spec] of Object.entries(FILE_KINDS) as [FileKind, (typeof FILE_KINDS)[FileKind]][]) {
-    if (spec.ext.includes(ext) && spec.mime.includes(mime)) return kind;
+  for (const kind of Object.keys(FILE_KINDS) as FileKind[]) {
+    const spec = FILE_KINDS[kind];
+    if (spec.ext.some((e) => e === ext) && spec.mime.some((m) => m === mime)) return kind;
   }
   return null;
 }
@@ -372,7 +373,7 @@ export function schemaEditError(_prev: FormSchema, next: FormSchema, published: 
     const pub = pubById.get(q.id);
     if (pub && pub.type !== "statement") {
       if (q.type !== pub.type) return "Question type cannot change after publish";
-      if (q.type !== "statement" && pub.type !== "statement" && "slug" in q && "slug" in pub && q.slug !== pub.slug) {
+      if ("slug" in q && "slug" in pub && q.slug !== pub.slug) {
         return "Question slug cannot change";
       }
     }

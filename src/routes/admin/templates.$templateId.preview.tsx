@@ -31,13 +31,15 @@ function TemplatePreviewPage() {
     );
   }
 
+  const draft = built;
+
   async function create() {
     setError(null);
     setBusy(true);
     try {
       const form = await api<{ id: string }>("/api/forms", {
         method: "POST",
-        body: JSON.stringify({ title: built.title, schema: built.schema }),
+        body: JSON.stringify({ title: draft.title, schema: draft.schema }),
       });
       await navigate({ to: "/admin/forms/$id", params: { id: form.id } });
     } catch (e) {

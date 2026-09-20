@@ -131,9 +131,12 @@ export function Builder(props: Props) {
   }
 
   function taken(exceptId?: string): Set<string> {
-    return new Set(
-      schema.questions.filter((q) => q.type !== "statement" && q.id !== exceptId).map((q) => q.slug),
-    );
+    const slugs = new Set<string>();
+    for (const q of schema.questions) {
+      if (q.type === "statement" || q.id === exceptId) continue;
+      slugs.add(q.slug);
+    }
+    return slugs;
   }
 
   function patchQuestion(id: string, fn: (q: Question) => Question) {
@@ -578,9 +581,6 @@ function QuestionInspect(props: {
   onDelete?: () => void;
 }) {
   const { q } = props;
-  function set<K extends keyof Question>(key: K, value: Question[K]) {
-    props.onChange((prev) => ({ ...prev, [key]: value }) as Question);
-  }
   return (
     <>
       {props.pages.length > 1 && props.currentPageId && (
@@ -613,7 +613,11 @@ function QuestionInspect(props: {
         />
       </Field>
       <Field label="Description">
-        <Textarea rows={3} value={q.description ?? ""} onChange={(e) => set("description", e.target.value || undefined)} />
+        <Textarea
+          rows={3}
+          value={q.description ?? ""}
+          onChange={(e) => props.onChange((prev) => ({ ...prev, description: e.target.value || undefined }))}
+        />
       </Field>
       {"slug" in q && (
         <Field
@@ -664,13 +668,25 @@ function QuestionInspect(props: {
       </Field>
       {"required" in q && (
         <label className="flex items-center gap-2 text-sm">
-          <Checkbox checked={q.required} onCheckedChange={(c) => set("required", Boolean(c) as never)} />
+          <Checkbox
+            checked={q.required}
+            onCheckedChange={(c) =>
+              props.onChange((prev) => ("required" in prev ? { ...prev, required: Boolean(c) } : prev))
+            }
+          />
           Required
         </label>
       )}
       {"placeholder" in q && (
         <Field label="Placeholder">
-          <Input value={q.placeholder ?? ""} onChange={(e) => set("placeholder", (e.target.value || undefined) as never)} />
+          <Input
+            value={q.placeholder ?? ""}
+            onChange={(e) =>
+              props.onChange((prev) =>
+                "placeholder" in prev ? { ...prev, placeholder: e.target.value || undefined } : prev,
+              )
+            }
+          />
         </Field>
       )}
       {q.type === "number" && (

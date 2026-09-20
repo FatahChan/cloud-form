@@ -12,7 +12,7 @@ export const Route = createFileRoute("/api/forms")({
       POST: async ({ request, context }) =>
         serve(async () => {
           const body = await readJson<{ title?: string; schema?: unknown }>(request);
-          return forms.createForm(authed(context).user, body);
+          return forms.createForm(authed(context).user, body ?? undefined);
         }),
     },
   },
