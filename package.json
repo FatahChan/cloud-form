@@ -2,11 +2,22 @@
   "name": "cloud-form",
   "private": true,
   "type": "module",
+  "cloudflare": {
+    "bindings": {
+      "DB": {
+        "description": "D1 database for users, forms, submissions metadata, and audit log."
+      },
+      "FILES": {
+        "description": "R2 bucket for form uploads (pending and submission attachments)."
+      }
+    }
+  },
   "scripts": {
     "dev": "wrangler d1 migrations apply DB --local && vite dev",
     "build": "vite build",
     "preview": "vite preview",
-    "deploy": "npm run build && wrangler deploy && wrangler d1 migrations apply DB --remote",
+    "db:migrations:apply": "wrangler d1 migrations apply DB --remote",
+    "deploy": "npm run build && wrangler deploy && npm run db:migrations:apply",
     "cf-typegen": "wrangler types",
     "test": "vitest run"
   },

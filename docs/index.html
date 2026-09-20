@@ -330,6 +330,29 @@
         justify-content: space-between;
         gap: 1rem;
       }
+
+      .deploy-cloudflare {
+        display: inline-block;
+        line-height: 0;
+      }
+
+      .deploy-cloudflare img {
+        height: 36px;
+        width: auto;
+        display: block;
+      }
+
+      .deploy-note {
+        margin-top: 1rem;
+        font-size: 0.88rem;
+        color: var(--text-muted);
+        max-width: 52ch;
+        margin-inline: auto;
+      }
+
+      .deploy-note a {
+        color: var(--text-muted);
+      }
     </style>
   </head>
   <body>
@@ -354,9 +377,25 @@
           collect submissions in D1, and store uploads in R2 — no separate backend to wire up.
         </p>
         <div class="hero-actions">
-          <a class="btn btn-primary" href="https://github.com/FatahChan/cloud-form#run">Quick start</a>
+          <a
+            class="deploy-cloudflare"
+            href="https://deploy.workers.cloudflare.com/?url=https://github.com/FatahChan/cloud-form"
+            title="Deploy to Cloudflare"
+          >
+            <img
+              src="https://deploy.workers.cloudflare.com/button"
+              alt="Deploy to Cloudflare"
+              width="166"
+              height="36"
+            />
+          </a>
+          <a class="btn btn-secondary" href="https://github.com/FatahChan/cloud-form#run">Manual install</a>
           <a class="btn btn-secondary" href="https://github.com/FatahChan/cloud-form">Source on GitHub</a>
         </div>
+        <p class="deploy-note">
+          One click forks the repo, provisions D1 and R2, and deploys via Workers Builds.
+          <a href="https://developers.cloudflare.com/workers/platform/deploy-buttons/">Learn more</a>
+        </p>
 
         <div class="panel" aria-label="Install commands">
           <pre><code>git clone https://github.com/FatahChan/cloud-form.git
@@ -408,7 +447,13 @@ npm run deploy</code></pre>
             <li>
               <div>
                 <strong>Deploy to Cloudflare</strong>
-                <span><code>npm run deploy</code> builds the app, pushes the Worker, and applies D1 migrations remotely.</span>
+                <span
+                  >Use the
+                  <a href="https://deploy.workers.cloudflare.com/?url=https://github.com/FatahChan/cloud-form"
+                    >Deploy to Cloudflare</a
+                  >
+                  button, or run <code>npm run deploy</code> locally after <code>wrangler login</code>.</span
+                >
               </div>
             </li>
             <li>
