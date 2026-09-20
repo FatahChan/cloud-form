@@ -2,6 +2,8 @@
 
 Typeform-style form builder that runs as one Cloudflare Worker. Clone, log in to Wrangler, deploy. D1 and R2 are created on first deploy. No extra secrets or dashboards.
 
+**Project site:** [fatahchan.github.io/cloud-form](https://fatahchan.github.io/cloud-form) (GitHub Pages)
+
 ## Run
 
 ```bash
