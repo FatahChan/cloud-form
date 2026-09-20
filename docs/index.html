@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="Cloud Form — a Typeform-style form builder that runs as one Cloudflare Worker with D1 and R2."
+      content="Cloud Form — Typeform-style forms with templates, multi-page flows, inbox, and file uploads on one Cloudflare Worker (D1 + R2)."
     />
     <title>Cloud Form</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -353,6 +353,93 @@
       .deploy-note a {
         color: var(--text-muted);
       }
+
+      .feature-spotlight {
+        display: grid;
+        gap: 1rem;
+      }
+
+      @media (min-width: 720px) {
+        .feature-spotlight {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+
+      @media (min-width: 960px) {
+        .feature-spotlight {
+          grid-template-columns: repeat(4, 1fr);
+        }
+      }
+
+      .spotlight-card {
+        background: var(--bg-elevated);
+        border: 1px solid var(--border);
+        border-radius: calc(var(--radius) + 2px);
+        padding: 1.5rem 1.35rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        min-height: 100%;
+      }
+
+      .spotlight-card--accent {
+        border-color: #bae6fd;
+        background: linear-gradient(165deg, #fff 0%, #f0f9ff 100%);
+      }
+
+      .feature-icon {
+        width: 2.5rem;
+        height: 2.5rem;
+        border-radius: 10px;
+        display: grid;
+        place-items: center;
+        background: var(--accent-soft);
+        color: var(--accent-deep);
+        flex-shrink: 0;
+      }
+
+      .feature-icon svg {
+        width: 1.25rem;
+        height: 1.25rem;
+      }
+
+      .spotlight-card h3 {
+        margin: 0;
+        font-size: 1.05rem;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+
+      .spotlight-card p {
+        margin: 0;
+        font-size: 0.9rem;
+        color: var(--text-muted);
+        line-height: 1.5;
+      }
+
+      .card ul {
+        margin: 0.5rem 0 0;
+        padding-left: 1.1rem;
+        font-size: 0.88rem;
+        color: var(--text-muted);
+      }
+
+      .card li {
+        margin-bottom: 0.25rem;
+      }
+
+      .card li:last-child {
+        margin-bottom: 0;
+      }
+
+      section.alt {
+        background: #f1f5f9;
+        border-block: 1px solid var(--border);
+      }
+
+      .hero .panel {
+        margin-top: 2.5rem;
+      }
     </style>
   </head>
   <body>
@@ -373,8 +460,8 @@
         <p class="badge">Open source · Cloudflare Workers</p>
         <h1>Forms that feel like Typeform, deploy like a single Worker.</h1>
         <p>
-          Build welcome screens, question flows, and endings in a drag-and-drop admin. Publish to a public URL,
-          collect submissions in D1, and store uploads in R2 — no separate backend to wire up.
+          A full Typeform-style builder and respondent experience on Cloudflare: multi-page flows, templates,
+          searchable inbox, and file uploads — one Worker, D1, and R2. No separate API server.
         </p>
         <div class="hero-actions">
           <a
@@ -408,32 +495,113 @@ npm run deploy</code></pre>
 
       <section id="features">
         <div class="wrap">
-          <h2>What you get</h2>
-          <p class="section-lead">One repo, one Worker, SQLite via D1, files on R2, and a React admin built with TanStack Start.</p>
+          <h2>Key features</h2>
+          <p class="section-lead">
+            Everything you need to design, publish, and operate forms — from first template to growing submission volume.
+          </p>
+          <div class="feature-spotlight" style="margin-bottom: 2rem">
+            <article class="spotlight-card spotlight-card--accent">
+              <div class="feature-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                  <path d="M4 6h16M4 12h10M4 18h14" />
+                </svg>
+              </div>
+              <h3>Typeform-style flows</h3>
+              <p>
+                Centered welcome and thank-you screens, progress bar, and multiple questions per step — respondents stay focused.
+              </p>
+            </article>
+            <article class="spotlight-card spotlight-card--accent">
+              <div class="feature-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                  <rect x="3" y="3" width="7" height="7" rx="1" />
+                  <rect x="14" y="3" width="7" height="7" rx="1" />
+                  <rect x="3" y="14" width="7" height="7" rx="1" />
+                  <path d="M14 17h7M14 14h7" />
+                </svg>
+              </div>
+              <h3>Starter templates</h3>
+              <p>
+                Contact, job application, NPS, events, and more. Preview the full flow, then create a draft in one click.
+              </p>
+            </article>
+            <article class="spotlight-card spotlight-card--accent">
+              <div class="feature-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                  <path d="M12 3v3M12 18v3M3 12h3M18 12h3" />
+                  <circle cx="12" cy="12" r="4" />
+                </svg>
+              </div>
+              <h3>Visual builder</h3>
+              <p>
+                Drag-and-drop questions, organize pages in the sidebar, and publish when the schema is valid — with live preview.
+              </p>
+            </article>
+            <article class="spotlight-card spotlight-card--accent">
+              <div class="feature-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+              </div>
+              <h3>Inbox &amp; attachments</h3>
+              <p>
+                Searchable submission tables with cursor pagination. File uploads land in R2 and download from the admin inbox.
+              </p>
+            </article>
+          </div>
           <div class="grid grid-3">
             <article class="card">
-              <h3>Visual builder</h3>
-              <p>Reorder questions, edit welcome and thank-you screens, and publish when the schema is valid.</p>
-            </article>
-            <article class="card">
               <h3>Public player</h3>
-              <p>Share <code>/f/&lt;slug&gt;</code> links. Respondents get a focused step-by-step experience.</p>
+              <p>Share <code>/f/&lt;slug&gt;</code> links. Keyboard-friendly steps, phone fields, selects, and file questions.</p>
             </article>
             <article class="card">
-              <h3>Inbox &amp; files</h3>
-              <p>Review submissions per form, filter answers, and download attachments from R2.</p>
+              <h3>Forms dashboard</h3>
+              <p>Search and sort your forms. See who created and last updated each form before opening the builder.</p>
             </article>
             <article class="card">
-              <h3>Team &amp; audit</h3>
-              <p>Invite admins with expiring links. Owner setup once; audit log for form and user actions.</p>
+              <h3>Publish &amp; schema DDL</h3>
+              <p>Publishing creates or migrates per-form D1 tables so new fields work without hand-written SQL.</p>
             </article>
             <article class="card">
-              <h3>Schema migrations</h3>
-              <p>Publishing creates or alters per-form tables so new fields land without manual SQL.</p>
+              <h3>Team invites</h3>
+              <p>Owner setup once at <code>/admin/setup</code>. Invite teammates with expiring join links from Team.</p>
             </article>
             <article class="card">
-              <h3>Edge-native stack</h3>
-              <p>D1 and R2 bindings are provisioned on deploy. Session cookies and API routes run on the Worker.</p>
+              <h3>Audit log</h3>
+              <p>Track form publishes, team changes, and other admin actions in one place for accountability.</p>
+            </article>
+            <article class="card">
+              <h3>Edge-native &amp; themed admin</h3>
+              <p>Single Cloudflare Worker with D1 and R2 on deploy. Light and dark mode across the admin experience.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="alt">
+        <div class="wrap">
+          <h2>Field types &amp; responses</h2>
+          <p class="section-lead">Build the questions you actually need; answers map cleanly into structured storage.</p>
+          <div class="grid grid-2">
+            <article class="card">
+              <h3>Question types</h3>
+              <ul>
+                <li>Short and long text, email, phone (validated)</li>
+                <li>Single and multi select, numbers, and dates</li>
+                <li>File upload with size and type limits (R2)</li>
+                <li>Statement blocks for instructions between steps</li>
+              </ul>
+            </article>
+            <article class="card">
+              <h3>How responses are stored</h3>
+              <ul>
+                <li>Metadata and auth in shared D1 tables</li>
+                <li>Per-form answer columns after publish</li>
+                <li>Attachments keyed to submissions in R2</li>
+                <li>API routes and sessions on the same Worker</li>
+              </ul>
             </article>
           </div>
         </div>
@@ -464,8 +632,14 @@ npm run deploy</code></pre>
             </li>
             <li>
               <div>
+                <strong>Pick a template or start blank</strong>
+                <span>Open <code>/admin/templates</code> to preview a layout, or create a form from the Forms list.</span>
+              </div>
+            </li>
+            <li>
+              <div>
                 <strong>Build &amp; publish</strong>
-                <span>Use the admin builder, publish when ready, and share the public slug at <code>/f/&lt;slug&gt;</code>.</span>
+                <span>Customize in the builder, publish when ready, and share the public slug at <code>/f/&lt;slug&gt;</code>.</span>
               </div>
             </li>
           </ol>
