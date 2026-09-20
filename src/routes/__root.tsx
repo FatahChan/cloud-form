@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { HeadContent, Outlet, Scripts, createRootRoute } from "@tanstack/react-router";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
+import { cloudFormLogoUrl } from "@/components/logo";
 import appCss from "~/styles.css?url";
 
 export const Route = createRootRoute({
@@ -11,7 +12,10 @@ export const Route = createRootRoute({
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "Cloud Form" },
     ],
-    links: [{ rel: "stylesheet", href: appCss }],
+    links: [
+      { rel: "stylesheet", href: appCss },
+      { rel: "icon", href: cloudFormLogoUrl, type: "image/svg+xml" },
+    ],
   }),
   component: Root,
 });

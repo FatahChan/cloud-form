@@ -4,6 +4,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { api } from "~/lib/api";
 import type { SessionUser } from "~/server/session";
+import { CloudFormLogoLink } from "@/components/logo";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/admin")({
@@ -58,8 +59,8 @@ function AdminLayout() {
     <div className="flex min-h-svh flex-col">
       <header className="sticky top-0 z-20 border-b bg-background/80 backdrop-blur">
         <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-1 px-4">
-          <Link to="/admin" className="mr-3 font-heading text-sm font-medium tracking-tight">
-            Cloud Form
+          <Link to="/admin" className="mr-3 text-foreground hover:text-foreground">
+            <CloudFormLogoLink />
           </Link>
           {nav.map((item) => (
             <Button
