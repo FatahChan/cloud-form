@@ -56,11 +56,18 @@ export async function listForms() {
   return { forms: results ?? [] };
 }
 
-export async function createForm(user: SessionUser, title?: string) {
-  const t = title?.trim() || "Untitled form";
+export async function createForm(user: SessionUser, input?: { title?: string; schema?: unknown }) {
+  const t = input?.title?.trim() || "Untitled form";
   const id = crypto.randomUUID();
   const slug = formPublicSlug();
-  const schema = defaultFormSchema();
+  let schema: FormSchema;
+  if (input?.schema !== undefined) {
+    const parsed = parseFormSchema(input.schema);
+    if (!parsed.ok) throw new HttpError(parsed.error, 400);
+    schema = parsed.data;
+  } else {
+    schema = defaultFormSchema();
+  }
   const now = Date.now();
   await env.DB.prepare(
     "INSERT INTO forms (id, slug, title, published, schema, published_schema, created_by, updated_by, created_at, updated_at) VALUES (?, ?, ?, 0, ?, NULL, ?, ?, ?, ?)",

@@ -77,7 +77,7 @@ describe("form flow", () => {
     const audit = await auth.listAudit(50);
     expect((audit.events as { actor: string }[])[0]?.actor).toBe("owner@x.com");
 
-    const form = await forms.createForm(user, "Job");
+    const form = await forms.createForm(user, { title: "Job" });
     const listed = await forms.listForms();
     expect(listed.forms[0]).toMatchObject({
       id: form.id,

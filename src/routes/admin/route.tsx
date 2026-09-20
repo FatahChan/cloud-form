@@ -44,6 +44,12 @@ function AdminLayout() {
 
   const nav = [
     { to: "/admin" as const, label: "Forms", exact: true, on: pathname === "/admin" },
+    {
+      to: "/admin/templates" as const,
+      label: "Templates",
+      exact: false,
+      on: pathname.startsWith("/admin/templates"),
+    },
     { to: "/admin/team" as const, label: "Team", exact: false, on: pathname.startsWith("/admin/team") },
     { to: "/admin/audit" as const, label: "Audit", exact: false, on: pathname.startsWith("/admin/audit") },
   ];
