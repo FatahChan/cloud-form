@@ -95,7 +95,9 @@ export function FormPlayer({ schema, mode, slug, screen }: Props) {
   };
 
   const validate = (question: Question): string | null => {
-    if (question.type === "statement" || !("required" in question) || !question.required) return null;
+    if (question.type === "statement") return null;
+    if (question.type === "file" && mode === "preview") return null;
+    if (!("required" in question) || !question.required) return null;
     const v = answers[question.id];
     if (v === undefined || v === null || v === "") return "This question is required";
     if (question.type === "multi_select" && Array.isArray(v) && v.length === 0) return "This question is required";
