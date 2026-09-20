@@ -20,8 +20,19 @@ export type FormRow = {
   schema: string;
   published_schema: string | null;
   created_by: string;
+  updated_by: string | null;
   created_at: number;
   updated_at: number;
+};
+
+export type FormListItem = {
+  id: string;
+  slug: string;
+  title: string;
+  published: number;
+  updated_at: number;
+  created_by_name: string;
+  updated_by_name: string;
 };
 
 export function parseStored(row: FormRow): { schema: FormSchema; published: FormSchema | null } {
@@ -34,9 +45,15 @@ export function parseStored(row: FormRow): { schema: FormSchema; published: Form
 
 export async function listForms() {
   const { results } = await env.DB.prepare(
-    "SELECT id, slug, title, published, updated_at FROM forms ORDER BY updated_at DESC",
-  ).all();
-  return { forms: results };
+    `SELECT f.id, f.slug, f.title, f.published, f.updated_at,
+            creator.name AS created_by_name,
+            COALESCE(updater.name, creator.name) AS updated_by_name
+     FROM forms f
+     LEFT JOIN users creator ON creator.id = f.created_by
+     LEFT JOIN users updater ON updater.id = f.updated_by
+     ORDER BY f.updated_at DESC`,
+  ).all<FormListItem>();
+  return { forms: results ?? [] };
 }
 
 export async function createForm(user: SessionUser, title?: string) {
@@ -46,9 +63,9 @@ export async function createForm(user: SessionUser, title?: string) {
   const schema = defaultFormSchema();
   const now = Date.now();
   await env.DB.prepare(
-    "INSERT INTO forms (id, slug, title, published, schema, published_schema, created_by, created_at, updated_at) VALUES (?, ?, ?, 0, ?, NULL, ?, ?, ?)",
+    "INSERT INTO forms (id, slug, title, published, schema, published_schema, created_by, updated_by, created_at, updated_at) VALUES (?, ?, ?, 0, ?, NULL, ?, ?, ?, ?)",
   )
-    .bind(id, slug, t, JSON.stringify(schema), user.id, now, now)
+    .bind(id, slug, t, JSON.stringify(schema), user.id, user.id, now, now)
     .run();
   await insertAudit({ actorId: user.id, action: "form.create", entityType: "form", entityId: id });
   return { id, slug, title: t, published: 0, schema };
@@ -78,8 +95,8 @@ export async function updateForm(user: SessionUser, id: string, input: { title?:
   const { schema: prev, published } = parseStored(row);
   const editErr = schemaEditError(prev, parsed.data, published);
   if (editErr) throw new HttpError(editErr, 400);
-  await env.DB.prepare("UPDATE forms SET title = ?, schema = ?, updated_at = ? WHERE id = ?")
-    .bind(title, JSON.stringify(parsed.data), Date.now(), id)
+  await env.DB.prepare("UPDATE forms SET title = ?, schema = ?, updated_at = ?, updated_by = ? WHERE id = ?")
+    .bind(title, JSON.stringify(parsed.data), Date.now(), user.id, id)
     .run();
   await insertAudit({ actorId: user.id, action: "form.update", entityType: "form", entityId: id });
   return { ok: true };
@@ -119,12 +136,14 @@ export async function publishForm(user: SessionUser, id: string, published: bool
     const pubErr = publishSchemaError(schema);
     if (pubErr) throw new HttpError(pubErr, 400);
     await diffAndMigrate({ formId: id, next: schema, published: prevPublished, actorId: user.id });
-    await env.DB.prepare("UPDATE forms SET published = 1, published_schema = ?, updated_at = ? WHERE id = ?")
-      .bind(JSON.stringify(schema), Date.now(), id)
+    await env.DB.prepare("UPDATE forms SET published = 1, published_schema = ?, updated_at = ?, updated_by = ? WHERE id = ?")
+      .bind(JSON.stringify(schema), Date.now(), user.id, id)
       .run();
     await insertAudit({ actorId: user.id, action: "form.publish", entityType: "form", entityId: id });
   } else {
-    await env.DB.prepare("UPDATE forms SET published = 0, updated_at = ? WHERE id = ?").bind(Date.now(), id).run();
+    await env.DB.prepare("UPDATE forms SET published = 0, updated_at = ?, updated_by = ? WHERE id = ?")
+      .bind(Date.now(), user.id, id)
+      .run();
     await insertAudit({ actorId: user.id, action: "form.unpublish", entityType: "form", entityId: id });
   }
   return { ok: true, published };

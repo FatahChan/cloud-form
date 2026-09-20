@@ -13,6 +13,8 @@ export const Route = createFileRoute("/api/forms/$id/submissions")({
           return submissions.listInbox(params.id, {
             slug: url.searchParams.get("slug"),
             q: url.searchParams.get("q"),
+            cursor: url.searchParams.get("cursor"),
+            limit: url.searchParams.get("limit"),
           });
         }),
     },

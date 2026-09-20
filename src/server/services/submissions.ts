@@ -117,36 +117,108 @@ export async function submitPublic(slug: string, answers: unknown) {
   return { ok: true, id: submissionId };
 }
 
-export async function listInbox(formId: string, filter?: { slug?: string | null; q?: string | null }) {
+type InboxFileRow = { id: string; submission_id: string; question_id: string; filename: string };
+type InboxRow = { id: string; created_at: number; [key: string]: unknown };
+
+export type InboxListFilter = {
+  slug?: string | null;
+  q?: string | null;
+  cursor?: string | null;
+  limit?: number | string | null;
+};
+
+function pageLimit(raw: number | string | null | undefined): number {
+  const n = typeof raw === "string" ? Number(raw) : raw;
+  if (n == null || !Number.isFinite(n)) return 20;
+  return Math.min(100, Math.max(1, Math.floor(n)));
+}
+
+function parseCursor(cursor: string | null | undefined): { created_at: number; id: string } | null {
+  if (!cursor) return null;
+  const i = cursor.indexOf(":");
+  if (i <= 0) throw new HttpError("Invalid cursor", 400);
+  const created_at = Number(cursor.slice(0, i));
+  const id = cursor.slice(i + 1);
+  if (!Number.isFinite(created_at) || !id) throw new HttpError("Invalid cursor", 400);
+  return { created_at, id };
+}
+
+function encodeCursor(row: { id: string; created_at: number | string }): string {
+  return `${Number(row.created_at)}:${row.id}`;
+}
+
+function likePattern(q: string): string {
+  return `%${q.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_")}%`;
+}
+
+function searchClause(
+  schema: FormSchema,
+  existing: Set<string>,
+  slug: string | null,
+  q: string | null,
+): { sql: string; binds: string[] } {
+  const term = q?.trim() ?? "";
+  if (!term) return { sql: "1=1", binds: [] };
+  const cols = schema.questions.filter((x): x is ColumnQuestion => x.type !== "statement");
+  if (slug) {
+    const col = cols.find((x) => x.slug === slug);
+    if (!col) throw new HttpError("Unknown field", 400);
+    if (!existing.has(columnName(col.slug))) return { sql: "0", binds: [] };
+    const value =
+      col.type === "email" ? term.toLowerCase() : col.type === "phone" ? (normalizePhone(term) ?? term) : term;
+    return { sql: `"${columnName(col.slug)}" LIKE ? ESCAPE '\\'`, binds: [likePattern(value)] };
+  }
+  const searchable = cols.filter((c) => c.type !== "file" && existing.has(columnName(c.slug)));
+  if (!searchable.length) return { sql: "1=1", binds: [] };
+  const sql = searchable.map((c) => `CAST("${columnName(c.slug)}" AS TEXT) LIKE ? ESCAPE '\\'`).join(" OR ");
+  return { sql: `(${sql})`, binds: searchable.map(() => likePattern(term)) };
+}
+
+export async function listInbox(formId: string, filter?: InboxListFilter) {
   const row = await env.DB.prepare("SELECT * FROM forms WHERE id = ?").bind(formId).first<FormRow>();
   if (!row) throw new HttpError("Not found", 404);
   const { schema } = parseStored(row);
   const table = tableName(formId);
+  const empty = {
+    schema,
+    submissions: [] as InboxRow[],
+    files: [] as InboxFileRow[],
+    continueCursor: null as string | null,
+    isDone: true,
+  };
   const exists = await env.DB.prepare("SELECT 1 AS n FROM sqlite_master WHERE type = 'table' AND name = ?")
     .bind(table)
     .first();
-  if (!exists) return { schema, submissions: [], files: [] };
-  const slug = filter?.slug ?? null;
-  const q = filter?.q ?? null;
-  let from = `FROM ${table} ORDER BY created_at DESC LIMIT 200`;
-  const binds: string[] = [];
-  if (slug && q) {
-    const col = schema.questions.find((x) => x.type !== "statement" && x.slug === slug);
-    if (!col || col.type === "statement") throw new HttpError("Unknown field", 400);
-    const info = await env.DB.prepare(`PRAGMA table_info(${table})`).all<{ name: string }>();
-    if (!(info.results ?? []).some((c) => c.name === columnName(col.slug))) {
-      return { schema, submissions: [], files: [] };
-    }
-    from = `FROM ${table} WHERE "${columnName(col.slug)}" = ? ORDER BY created_at DESC LIMIT 200`;
-    binds.push(col.type === "email" ? q.trim().toLowerCase() : col.type === "phone" ? (normalizePhone(q) ?? q.trim()) : q);
+  if (!exists) return empty;
+  const info = await env.DB.prepare(`PRAGMA table_info(${table})`).all<{ name: string }>();
+  const existing = new Set((info.results ?? []).map((c) => c.name));
+  const limit = pageLimit(filter?.limit);
+  const cursor = parseCursor(filter?.cursor);
+  const search = searchClause(schema, existing, filter?.slug ?? null, filter?.q ?? null);
+  const where = [search.sql];
+  const binds: (string | number)[] = [...search.binds];
+  if (cursor) {
+    where.push("(created_at < ? OR (created_at = ? AND id < ?))");
+    binds.push(cursor.created_at, cursor.created_at, cursor.id);
   }
-  const select = env.DB.prepare(`SELECT * ${from}`);
-  const filesQ = env.DB.prepare(
-    `SELECT id, submission_id, question_id, filename FROM files WHERE submission_id IN (SELECT id ${from})`,
-  );
-  const { results } = binds.length ? await select.bind(...binds).all() : await select.all();
-  const { results: files } = binds.length ? await filesQ.bind(...binds).all() : await filesQ.all();
-  return { schema, submissions: results, files: files ?? [] };
+  const sql = `SELECT * FROM ${table} WHERE ${where.join(" AND ")} ORDER BY created_at DESC, id DESC LIMIT ?`;
+  binds.push(limit + 1);
+  const { results } = await env.DB.prepare(sql).bind(...binds).all<InboxRow>();
+  const rows = results ?? [];
+  const hasMore = rows.length > limit;
+  const submissions = hasMore ? rows.slice(0, limit) : rows;
+  const continueCursor = hasMore && submissions.length ? encodeCursor(submissions[submissions.length - 1]!) : null;
+  let files: InboxFileRow[] = [];
+  if (submissions.length) {
+    const placeholders = submissions.map(() => "?").join(", ");
+    const listed = await env.DB.prepare(
+      `SELECT id, submission_id, question_id, filename FROM files WHERE submission_id IN (${placeholders})`,
+    )
+      .bind(...submissions.map((s) => s.id))
+      .all<InboxFileRow>();
+    files = listed.results ?? [];
+  }
+  return { schema, submissions, files, continueCursor, isDone: !hasMore };
 }
 
 export async function getSubmission(formId: string, sid: string) {

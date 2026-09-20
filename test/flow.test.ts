@@ -78,6 +78,12 @@ describe("form flow", () => {
     expect((audit.events as { actor: string }[])[0]?.actor).toBe("owner@x.com");
 
     const form = await forms.createForm(user, "Job");
+    const listed = await forms.listForms();
+    expect(listed.forms[0]).toMatchObject({
+      id: form.id,
+      created_by_name: "Owner",
+      updated_by_name: "Owner",
+    });
     const table = tableName(form.id);
 
     const afterCreate = await auth.listAudit(50);
@@ -151,6 +157,20 @@ describe("form flow", () => {
     const inbox = await submissions.listInbox(form.id);
     expect(inbox.submissions[0]?.phone).toBe("+201012345678");
     expect(inbox.files.some((f) => f.filename === "cv.pdf" && f.question_id === FILE_ID)).toBe(true);
+
+    const olderId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1";
+    await env.DB.prepare(`INSERT INTO ${table} (id, created_at, email) VALUES (?, ?, ?)`).bind(olderId, 1, "older@x.com").run();
+    const page1 = await submissions.listInbox(form.id, { limit: 1 });
+    expect(page1.submissions).toHaveLength(1);
+    expect(page1.isDone).toBe(false);
+    expect(page1.continueCursor).toBeTruthy();
+    const page2 = await submissions.listInbox(form.id, { limit: 1, cursor: page1.continueCursor });
+    expect(page2.submissions[0]?.id).toBe(olderId);
+    expect(page2.isDone).toBe(true);
+    const foundOlder = await submissions.listInbox(form.id, { q: "older" });
+    expect(foundOlder.submissions.some((s) => s.email === "older@x.com")).toBe(true);
+    const byEmail = await submissions.listInbox(form.id, { slug: "email", q: "ada" });
+    expect(byEmail.submissions.some((s) => s.email === "ada@x.com")).toBe(true);
   });
 });
 

@@ -1,10 +1,13 @@
+import { createColumnHelper } from "@tanstack/react-table";
+import { CopyIcon, InboxIcon } from "lucide-react";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { DataTable } from "@/components/data-table";
+import { type DataTableFeatures } from "@/components/data-table-features";
 import { Page } from "@/components/page";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api, ApiError } from "~/lib/api";
 import { toast } from "sonner";
 
@@ -12,7 +15,74 @@ export const Route = createFileRoute("/admin/")({
   component: FormsPage,
 });
 
-type FormListItem = { id: string; slug: string; title: string; published: number; updated_at: number };
+type FormListItem = {
+  id: string;
+  slug: string;
+  title: string;
+  published: number;
+  updated_at: number;
+  created_by_name: string;
+  updated_by_name: string;
+};
+
+const columnHelper = createColumnHelper<DataTableFeatures, FormListItem>();
+
+const columns = columnHelper.columns([
+  columnHelper.accessor("title", {
+    header: "Title",
+    cell: ({ row }) => (
+      <Link to="/admin/forms/$id" params={{ id: row.original.id }} className="font-medium hover:underline">
+        {row.original.title}
+      </Link>
+    ),
+  }),
+  columnHelper.accessor((row) => (row.published ? "Published" : "Draft"), {
+    id: "status",
+    header: "Status",
+    cell: ({ getValue }) => {
+      const status = getValue();
+      return <Badge variant={status === "Published" ? "default" : "secondary"}>{status}</Badge>;
+    },
+  }),
+  columnHelper.accessor("created_by_name", { header: "Created by" }),
+  columnHelper.accessor((row) => new Date(row.updated_at).toLocaleString(), {
+    id: "updated_at",
+    header: "Last updated",
+    cell: ({ getValue }) => <span className="text-muted-foreground">{getValue()}</span>,
+  }),
+  columnHelper.accessor("updated_by_name", { header: "Updated by" }),
+  columnHelper.display({
+    id: "actions",
+    enableGlobalFilter: false,
+    cell: ({ row }) => {
+      const f = row.original;
+      return (
+        <div className="space-x-2 text-right">
+          <Button variant="outline" size="sm" asChild>
+            <Link to="/admin/forms/$id/inbox" params={{ id: f.id }}>
+              <InboxIcon data-icon="inline-start" />
+              Inbox
+            </Link>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            type="button"
+            onClick={() => {
+              void navigator.clipboard.writeText(window.location.origin + "/f/" + f.slug).then(
+                () => toast.success("Link copied"),
+                () => toast.message(window.location.origin + "/f/" + f.slug),
+              );
+            }}
+          >
+            <CopyIcon data-icon="inline-start" />
+            Copy link
+          </Button>
+        </div>
+      );
+    },
+  }),
+]);
 
 function FormsPage() {
   const [forms, setForms] = useState<FormListItem[]>([]);
@@ -53,59 +123,13 @@ function FormsPage() {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
-      <div className="rounded-xl border bg-card">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Title</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right"> </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {forms.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={3} className="text-muted-foreground">
-                  No forms yet.
-                </TableCell>
-              </TableRow>
-            ) : (
-              forms.map((f) => (
-                <TableRow key={f.id}>
-                  <TableCell className="font-medium">
-                    <Link to="/admin/forms/$id" params={{ id: f.id }} className="hover:underline">
-                      {f.title}
-                    </Link>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={f.published ? "default" : "secondary"}>{f.published ? "Published" : "Draft"}</Badge>
-                  </TableCell>
-                  <TableCell className="space-x-2 text-right">
-                    <Button variant="ghost" size="sm" asChild>
-                      <Link to="/admin/forms/$id/inbox" params={{ id: f.id }}>
-                        Inbox
-                      </Link>
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      type="button"
-                      onClick={() => {
-                        void navigator.clipboard.writeText(window.location.origin + "/f/" + f.slug).then(
-                          () => toast.success("Link copied"),
-                          () => toast.message(window.location.origin + "/f/" + f.slug),
-                        );
-                      }}
-                    >
-                      Copy link
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      <DataTable
+        columns={columns}
+        data={forms}
+        getRowId={(row) => row.id}
+        searchPlaceholder="Search forms…"
+        empty={forms.length ? "No matching forms." : "No forms yet."}
+      />
     </Page>
   );
 }

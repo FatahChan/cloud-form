@@ -89,18 +89,23 @@ export function Builder(props: Props) {
   const [published, setPublished] = useState(props.published);
   const [selected, setSelected] = useState<PlayerScreen>("welcome");
   const [err, setErr] = useState<string | null>(null);
-  const saved = useRef(JSON.stringify({ title: props.title, schema: normalizeFormSchema(props.schema) }));
+  const publishedTitle = useRef(props.title);
+  const saved = useRef<string | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
   const publishedIds = useMemo(
     () => new Set((props.publishedSchema?.questions ?? []).map((q) => q.id)),
     [props.publishedSchema],
   );
   const diff = useMemo(() => unpublishedChanges(schema, props.publishedSchema), [schema, props.publishedSchema]);
-  const canPublish = !published || diff.lines.length > 0;
+  const canPublish = !published || diff.lines.length > 0 || title.trim() !== publishedTitle.current.trim();
   const pages = schema.pages ?? [];
 
   useEffect(() => {
     const now = JSON.stringify({ title, schema });
+    if (saved.current === null) {
+      saved.current = now;
+      return;
+    }
     if (now === saved.current) return;
     saved.current = now;
     const t = setTimeout(() => {
@@ -208,6 +213,7 @@ export function Builder(props: Props) {
         body: JSON.stringify({ published: true }),
       });
       setPublished(true);
+      publishedTitle.current = title;
       props.onMeta({ title, published: true, publishedSchema: schema });
       toast.success("Published");
     } catch (e) {
@@ -237,13 +243,19 @@ export function Builder(props: Props) {
 
   return (
     <div className="flex min-h-0 min-w-[56rem] flex-1 flex-col">
-      <div className="flex items-center justify-end gap-3 border-b px-4 py-3">
+      <div className="flex items-center gap-3 border-b px-4 py-3">
+        <Input
+          aria-label="Form title"
+          className="max-w-xs"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+        />
         {err && (
-          <Alert variant="destructive" className="mr-auto">
+          <Alert variant="destructive" className="min-w-0 flex-1">
             <AlertDescription>{err}</AlertDescription>
           </Alert>
         )}
-        <div className="flex shrink-0 flex-wrap justify-end gap-2">
+        <div className="ml-auto flex shrink-0 flex-wrap justify-end gap-2">
           {canPublish && (
             <Button type="button" onClick={() => void publishLive()}>
               {published ? "Publish changes" : "Publish"}
@@ -363,9 +375,6 @@ export function Builder(props: Props) {
       <aside className="min-h-0 border-l bg-card">
         <ScrollArea className="h-full">
           <div className="grid gap-4 p-4">
-            <Field label="Form title">
-              <Input value={title} onChange={(e) => setTitle(e.target.value)} />
-            </Field>
             {selected === "welcome" && (
               <>
                 <Field label="Headline">
