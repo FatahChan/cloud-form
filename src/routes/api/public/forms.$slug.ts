@@ -1,11 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { handlePublicForm } from "~/server/submissions";
-import { run } from "~/server/run";
+import { serve } from "~/server/serve";
+import * as submissions from "~/server/services/submissions";
 
 export const Route = createFileRoute("/api/public/forms/$slug")({
   server: {
     handlers: {
-      GET: ({ params }) => run(() => handlePublicForm(params.slug)),
+      GET: ({ params }) => serve(() => submissions.getPublicForm(params.slug)),
     },
   },
 });

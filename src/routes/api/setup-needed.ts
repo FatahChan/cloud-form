@@ -1,11 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { handleSetupNeeded } from "~/server/auth";
-import { run } from "~/server/run";
+import { serve } from "~/server/serve";
+import * as auth from "~/server/services/auth";
 
 export const Route = createFileRoute("/api/setup-needed")({
   server: {
     handlers: {
-      GET: () => run(handleSetupNeeded),
+      GET: () => serve(() => auth.setupNeeded()),
     },
   },
 });

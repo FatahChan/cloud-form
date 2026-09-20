@@ -6,56 +6,52 @@ import {
   type ColumnQuestion,
   type FormSchema,
   type Question,
-} from "../shared/schema";
-import { requireUser } from "./auth";
-import { copyPending, putPending } from "./files";
-import { columnName, tableName } from "./formTable";
+} from "../../shared/schema";
+import { HttpError } from "../errors";
+import { copyPending, putPending } from "../files";
+import { columnName, tableName } from "../formTable";
 import { parseStored, type FormRow } from "./forms";
-import { authed, env, err, json } from "./http";
+import { env } from "../http";
 
 function fileQuestion(schema: FormSchema, questionId: string): Extract<Question, { type: "file" }> | null {
   const q = liveQuestions(schema).find((x) => x.id === questionId);
   return q?.type === "file" ? q : null;
 }
 
-export async function handlePublicForm(slug: string): Promise<Response> {
+async function publishedForm(slug: string): Promise<{ row: FormRow; schema: FormSchema }> {
   const row = await env.DB.prepare("SELECT * FROM forms WHERE slug = ? AND published = 1").bind(slug).first<FormRow>();
-  if (!row || !row.published_schema) return err("Not found", 404);
-  const schema = JSON.parse(row.published_schema) as FormSchema;
-  return json({ id: row.id, slug: row.slug, title: row.title, schema });
+  if (!row || !row.published_schema) throw new HttpError("Not found", 404);
+  return { row, schema: JSON.parse(row.published_schema) as FormSchema };
 }
 
-export async function handlePublicUpload(request: Request, slug: string): Promise<Response> {
-  const row = await env.DB.prepare("SELECT * FROM forms WHERE slug = ? AND published = 1").bind(slug).first<FormRow>();
-  if (!row || !row.published_schema) return err("Not found", 404);
-  const schema = JSON.parse(row.published_schema) as FormSchema;
-  const form = await request.formData();
-  const file = form.get("file");
-  const questionId = String(form.get("questionId") ?? "");
-  if (!(file instanceof File)) return err("file required", 400);
+export async function getPublicForm(slug: string) {
+  const { row, schema } = await publishedForm(slug);
+  return { id: row.id, slug: row.slug, title: row.title, schema };
+}
+
+export async function uploadPublicFile(slug: string, file: File, questionId: string) {
+  const { row, schema } = await publishedForm(slug);
+  if (!file) throw new HttpError("file required", 400);
   const q = fileQuestion(schema, questionId);
-  if (!q) return err("Invalid question", 400);
+  if (!q) throw new HttpError("Invalid question", 400);
   const max = q.maxSizeMb * 1024 * 1024;
-  if (file.size > max) return err("File too large", 413);
+  if (file.size > max) throw new HttpError("File too large", 413);
   const mime = file.type;
-  if (!mime) return err("Unknown file type", 415);
+  if (!mime) throw new HttpError("Unknown file type", 415);
   const kind = fileKindFor(file.name, mime);
-  if (!kind || !q.accept.includes(kind)) return err("File type not allowed", 415);
+  if (!kind || !q.accept.includes(kind)) throw new HttpError("File type not allowed", 415);
   const bytes = new Uint8Array(await file.arrayBuffer());
-  if (bytes.byteLength > max) return err("File too large", 413);
+  if (bytes.byteLength > max) throw new HttpError("File too large", 413);
   const uploadId = crypto.randomUUID();
   const key = `pending/${row.id}/${questionId}/${uploadId}`;
   await putPending(key, bytes, mime, file.name);
-  return json({ uploadId });
+  return { uploadId };
 }
 
-export async function handlePublicSubmit(request: Request, slug: string): Promise<Response> {
-  const row = await env.DB.prepare("SELECT * FROM forms WHERE slug = ? AND published = 1").bind(slug).first<FormRow>();
-  if (!row || !row.published_schema) return err("Not found", 404);
-  const schema = JSON.parse(row.published_schema) as FormSchema;
-  const body = (await request.json().catch(() => null)) as { answers?: unknown } | null;
-  const parsed = parseAnswers(schema, body?.answers);
-  if (!parsed.ok) return err(parsed.error, 400);
+export async function submitPublic(slug: string, answers: unknown) {
+  const { row, schema } = await publishedForm(slug);
+  const parsed = parseAnswers(schema, answers);
+  if (!parsed.ok) throw new HttpError(parsed.error, 400);
 
   const submissionId = crypto.randomUUID();
   const table = tableName(row.id);
@@ -75,7 +71,7 @@ export async function handlePublicSubmit(request: Request, slug: string): Promis
     const pending = `pending/${row.id}/${q.id}/${ans.uploadId}`;
     const dest = `submissions/${submissionId}/${ans.uploadId}`;
     const obj = await copyPending(pending, dest);
-    if (!obj) return err("Missing upload", 400);
+    if (!obj) throw new HttpError("Missing upload", 400);
     destKeys.push({ q, uploadId: ans.uploadId, pending, dest, obj });
   }
 
@@ -117,31 +113,28 @@ export async function handlePublicSubmit(request: Request, slug: string): Promis
   }
   await env.DB.batch(stmts);
   for (const d of destKeys) await env.FILES.delete(d.pending);
-  return json({ ok: true, id: submissionId });
+  return { ok: true, id: submissionId };
 }
 
-export async function handleInbox(request: Request, formId: string): Promise<Response> {
-  const s = await requireUser(request);
-  if (s instanceof Response) return s;
+export async function listInbox(formId: string, filter?: { slug?: string | null; q?: string | null }) {
   const row = await env.DB.prepare("SELECT * FROM forms WHERE id = ?").bind(formId).first<FormRow>();
-  if (!row) return authed(err("Not found", 404), s.setCookie);
+  if (!row) throw new HttpError("Not found", 404);
   const { schema } = parseStored(row);
   const table = tableName(formId);
   const exists = await env.DB.prepare("SELECT 1 AS n FROM sqlite_master WHERE type = 'table' AND name = ?")
     .bind(table)
     .first();
-  if (!exists) return authed(json({ schema, submissions: [], files: [] }), s.setCookie);
-  const url = new URL(request.url);
-  const slug = url.searchParams.get("slug");
-  const q = url.searchParams.get("q");
+  if (!exists) return { schema, submissions: [], files: [] };
+  const slug = filter?.slug ?? null;
+  const q = filter?.q ?? null;
   let from = `FROM ${table} ORDER BY created_at DESC LIMIT 200`;
   const binds: string[] = [];
   if (slug && q) {
     const col = schema.questions.find((x) => x.type !== "statement" && x.slug === slug);
-    if (!col || col.type === "statement") return authed(err("Unknown field", 400), s.setCookie);
+    if (!col || col.type === "statement") throw new HttpError("Unknown field", 400);
     const info = await env.DB.prepare(`PRAGMA table_info(${table})`).all<{ name: string }>();
     if (!(info.results ?? []).some((c) => c.name === columnName(col.slug))) {
-      return authed(json({ schema, submissions: [], files: [] }), s.setCookie);
+      return { schema, submissions: [], files: [] };
     }
     from = `FROM ${table} WHERE "${columnName(col.slug)}" = ? ORDER BY created_at DESC LIMIT 200`;
     binds.push(col.type === "email" ? q.trim().toLowerCase() : col.type === "phone" ? (normalizePhone(q) ?? q.trim()) : q);
@@ -152,35 +145,30 @@ export async function handleInbox(request: Request, formId: string): Promise<Res
   );
   const { results } = binds.length ? await select.bind(...binds).all() : await select.all();
   const { results: files } = binds.length ? await filesQ.bind(...binds).all() : await filesQ.all();
-  return authed(json({ schema, submissions: results, files: files ?? [] }), s.setCookie);
+  return { schema, submissions: results, files: files ?? [] };
 }
 
-export async function handleSubmission(request: Request, formId: string, sid: string): Promise<Response> {
-  const s = await requireUser(request);
-  if (s instanceof Response) return s;
+export async function getSubmission(formId: string, sid: string) {
   const row = await env.DB.prepare("SELECT * FROM forms WHERE id = ?").bind(formId).first<FormRow>();
-  if (!row) return authed(err("Not found", 404), s.setCookie);
+  if (!row) throw new HttpError("Not found", 404);
   const { schema } = parseStored(row);
   const table = tableName(formId);
   const sub = await env.DB.prepare(`SELECT * FROM ${table} WHERE id = ?`).bind(sid).first();
-  if (!sub) return authed(err("Not found", 404), s.setCookie);
+  if (!sub) throw new HttpError("Not found", 404);
   const { results: files } = await env.DB.prepare("SELECT * FROM files WHERE submission_id = ?").bind(sid).all();
-  return authed(json({ schema, submission: sub, files: files ?? [] }), s.setCookie);
+  return { schema, submission: sub, files: files ?? [] };
 }
 
-export async function handleDownload(request: Request, formId: string, sid: string, fileId: string): Promise<Response> {
-  const s = await requireUser(request);
-  if (s instanceof Response) return s;
+export async function downloadSubmissionFile(formId: string, sid: string, fileId: string) {
   const file = await env.DB.prepare("SELECT * FROM files WHERE id = ? AND submission_id = ?")
     .bind(fileId, sid)
     .first<{ r2_key: string; filename: string; content_type: string }>();
-  if (!file) return authed(err("Not found", 404), s.setCookie);
+  if (!file) throw new HttpError("Not found", 404);
   const obj = await env.FILES.get(file.r2_key);
-  if (!obj) return authed(err("Not found", 404), s.setCookie);
-  return new Response(obj.body, {
-    headers: {
-      "Content-Type": file.content_type,
-      "Content-Disposition": `attachment; filename="${file.filename.replace(/"/g, "")}"`,
-    },
-  });
+  if (!obj) throw new HttpError("Not found", 404);
+  return {
+    body: obj.body,
+    contentType: file.content_type,
+    filename: file.filename,
+  };
 }

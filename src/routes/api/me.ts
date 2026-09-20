@@ -1,11 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { handleMe } from "~/server/auth";
-import { run } from "~/server/run";
+import { authed } from "~/server/context";
+import { authMiddleware } from "~/server/middleware";
+import { serve } from "~/server/serve";
+import * as auth from "~/server/services/auth";
 
 export const Route = createFileRoute("/api/me")({
   server: {
+    middleware: [authMiddleware],
     handlers: {
-      GET: ({ request }) => run(() => handleMe(request)),
+      GET: ({ context }) => serve(() => auth.me(authed(context).user)),
     },
   },
 });

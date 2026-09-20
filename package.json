@@ -39,19 +39,21 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "^1.29.0",
-    "@cloudflare/vitest-pool-workers": "^0.12.4",
+    "@cloudflare/vite-plugin": "^1.56.0",
+    "@cloudflare/vitest-pool-workers": "^0.22.0",
     "@cloudflare/workers-types": "latest",
     "@types/node": "^22.5.4",
     "@types/react": "^19.0.8",
     "@types/react-dom": "^19.0.3",
     "@vitejs/plugin-react": "^5.0.4",
+    "@vitest/runner": "^4.1.11",
+    "@vitest/snapshot": "^4.1.11",
     "typescript": "^5.8.2",
     "vite": "^7.1.5",
-    "vitest": "^3.2.4",
-    "wrangler": "^4.45.0"
+    "vitest": "^4.1.11",
+    "wrangler": "^4.135.0"
   },
   "overrides": {
-    "sharp": "0.33.5"
+    "sharp": "^0.35.4"
   }
 }

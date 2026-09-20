@@ -1,11 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { handleInvite } from "~/server/auth";
-import { run } from "~/server/run";
+import { authed } from "~/server/context";
+import { authMiddleware } from "~/server/middleware";
+import { serve } from "~/server/serve";
+import * as auth from "~/server/services/auth";
 
 export const Route = createFileRoute("/api/invites")({
   server: {
+    middleware: [authMiddleware],
     handlers: {
-      POST: ({ request }) => run(() => handleInvite(request)),
+      POST: ({ context }) => serve(() => auth.createInvite(authed(context).user)),
     },
   },
 });

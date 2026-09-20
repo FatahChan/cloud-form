@@ -14,8 +14,4 @@ export function withCookies(res: Response, cookies: string[]): Response {
   return new Response(res.body, { status: res.status, headers: h });
 }
 
-export function authed(res: Response, setCookie?: string): Response {
-  return setCookie ? withCookies(res, [setCookie]) : res;
-}
-
 export { env };

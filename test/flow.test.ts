@@ -1,10 +1,11 @@
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { handleAudit, handleSetup, handleSetupNeeded } from "../src/server/auth";
 import { hashPassword, verifyPassword } from "../src/server/password";
-import { handleForm, handleListForms, handlePublish } from "../src/server/forms";
+import * as auth from "../src/server/services/auth";
+import * as forms from "../src/server/services/forms";
+import * as submissions from "../src/server/services/submissions";
 import { tableName } from "../src/server/formTable";
-import { handleInbox, handlePublicSubmit, handlePublicUpload } from "../src/server/submissions";
+import { validateSession } from "../src/server/session";
 import { unpublishedChanges, newQuestion, parseAnswers, type FormSchema } from "../src/shared/schema";
 import { slugify } from "../src/shared/slug";
 
@@ -22,11 +23,16 @@ function req(path: string, init: RequestInit = {}, cookie?: string): Request {
   return new Request("https://example.com" + path, { ...init, headers });
 }
 
-function sid(res: Response): string {
-  const c = res.headers.get("Set-Cookie") ?? "";
-  const m = /sid=[^;]+/.exec(c);
+function sid(cookie: string): string {
+  const m = /sid=[^;]+/.exec(cookie);
   if (!m) throw new Error("missing session cookie");
   return m[0];
+}
+
+async function sessionUser(cookie: string) {
+  const s = await validateSession(env.DB, req("/", {}, sid(cookie)));
+  if (!s) throw new Error("no session");
+  return s.user;
 }
 
 const baseSchema: FormSchema = {
@@ -60,44 +66,29 @@ describe("form flow", () => {
   });
 
   it("setup, publish CREATE, ALTER, pdf/png, submit, email column, R2", async () => {
-    const needed = await handleSetupNeeded();
-    expect(await needed.json()).toEqual({ needed: true });
+    expect(await auth.setupNeeded()).toEqual({ needed: true });
 
-    const setup = await handleSetup(
-      req("/api/setup", {
-        method: "POST",
-        body: JSON.stringify({ email: "owner@x.com", name: "Owner", password: "password1" }),
-      }),
+    const { cookie } = await auth.setup(
+      { email: "owner@x.com", name: "Owner", password: "password1" },
+      req("/api/setup", { method: "POST" }),
     );
-    expect(setup.status).toBe(200);
-    const cookie = sid(setup);
+    const user = await sessionUser(cookie);
 
-    const audit = await handleAudit(req("/api/audit", {}, cookie));
-    expect(((await audit.json()) as { events: { actor: string }[] }).events[0]?.actor).toBe("owner@x.com");
+    const audit = await auth.listAudit(50);
+    expect((audit.events as { actor: string }[])[0]?.actor).toBe("owner@x.com");
 
-    const created = await handleListForms(req("/api/forms", { method: "POST", body: JSON.stringify({ title: "Job" }) }, cookie));
-    expect(created.status).toBe(200);
-    const form = (await created.json()) as { id: string; slug: string; title: string };
+    const form = await forms.createForm(user, "Job");
     const table = tableName(form.id);
 
-    const afterCreate = await handleAudit(req("/api/audit", {}, cookie));
-    expect(((await afterCreate.json()) as { events: { action: string; entity: string; entity_id: string }[] }).events[0]).toMatchObject({
+    const afterCreate = await auth.listAudit(50);
+    expect((afterCreate.events as { action: string; entity: string; entity_id: string }[])[0]).toMatchObject({
       action: "form.create",
       entity: "Job",
       entity_id: form.id,
     });
 
-    const put = await handleForm(
-      req("/api/forms/" + form.id, { method: "PUT", body: JSON.stringify({ title: "Job", schema: baseSchema }) }, cookie),
-      form.id,
-    );
-    expect(put.status).toBe(200);
-
-    const pub = await handlePublish(
-      req("/api/forms/" + form.id + "/publish", { method: "POST", body: JSON.stringify({ published: true }) }, cookie),
-      form.id,
-    );
-    expect(pub.status).toBe(200);
+    await forms.updateForm(user, form.id, { title: "Job", schema: baseSchema });
+    await forms.publishForm(user, form.id, true);
 
     const createdTable = await env.DB.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?")
       .bind(table)
@@ -118,55 +109,27 @@ describe("form flow", () => {
         { type: "phone", id: PHONE_ID, slug: "phone", title: "Phone", required: false },
       ],
     };
-    const put2 = await handleForm(
-      req("/api/forms/" + form.id, { method: "PUT", body: JSON.stringify({ title: "Job", schema: withExtra }) }, cookie),
-      form.id,
-    );
-    expect(put2.status).toBe(200);
-    const inboxDraft = await handleInbox(req("/api/forms/" + form.id + "/submissions", {}, cookie), form.id);
-    expect(
-      ((await inboxDraft.json()) as { schema: FormSchema }).schema.questions.some((q) => q.type === "phone"),
-    ).toBe(true);
-    const pub2 = await handlePublish(
-      req("/api/forms/" + form.id + "/publish", { method: "POST", body: JSON.stringify({ published: true }) }, cookie),
-      form.id,
-    );
-    expect(pub2.status).toBe(200);
+    await forms.updateForm(user, form.id, { title: "Job", schema: withExtra });
+    const inboxDraft = await submissions.listInbox(form.id);
+    expect(inboxDraft.schema.questions.some((q) => q.type === "phone")).toBe(true);
+    await forms.publishForm(user, form.id, true);
     const migs2 = await env.DB.prepare("SELECT sql FROM form_migrations WHERE form_id = ? ORDER BY created_at").bind(form.id).all<{
       sql: string;
     }>();
-    expect(migs2.results?.some((r) => /ALTER TABLE/.test(r.sql))).toBe(true);
+    expect(migs2.results?.some((r: { sql: string }) => /ALTER TABLE/.test(r.sql))).toBe(true);
 
     const pdf = new File([new Uint8Array([0x25, 0x50, 0x44, 0x46])], "cv.pdf", { type: "application/pdf" });
     const png = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "x.png", { type: "image/png" });
 
-    const bad = new FormData();
-    bad.append("file", png);
-    bad.append("questionId", FILE_ID);
-    const pngRes = await handlePublicUpload(req("/api/public/forms/" + form.slug + "/files", { method: "POST", body: bad }), form.slug);
-    expect(pngRes.status).toBe(415);
+    await expect(submissions.uploadPublicFile(form.slug, png, FILE_ID)).rejects.toMatchObject({ status: 415 });
 
-    const good = new FormData();
-    good.append("file", pdf);
-    good.append("questionId", FILE_ID);
-    const pdfRes = await handlePublicUpload(req("/api/public/forms/" + form.slug + "/files", { method: "POST", body: good }), form.slug);
-    expect(pdfRes.status).toBe(200);
-    const { uploadId } = (await pdfRes.json()) as { uploadId: string };
+    const { uploadId } = await submissions.uploadPublicFile(form.slug, pdf, FILE_ID);
 
-    const submit = await handlePublicSubmit(
-      req("/api/public/forms/" + form.slug + "/submit", {
-        method: "POST",
-        body: JSON.stringify({
-          answers: {
-            [EMAIL_ID]: "ada@x.com",
-            [FILE_ID]: { uploadId },
-            [PHONE_ID]: "+20 10 1234 5678",
-          },
-        }),
-      }),
-      form.slug,
-    );
-    expect(submit.status).toBe(200);
+    await submissions.submitPublic(form.slug, {
+      [EMAIL_ID]: "ada@x.com",
+      [FILE_ID]: { uploadId },
+      [PHONE_ID]: "+20 10 1234 5678",
+    });
 
     const found = await env.DB.prepare(`SELECT id FROM ${table} WHERE email = ?`).bind("ada@x.com").first<{ id: string }>();
     expect(found?.id).toBeTruthy();
@@ -178,13 +141,9 @@ describe("form flow", () => {
     const obj = await env.FILES.get(fileRow!.r2_key);
     expect(obj).toBeTruthy();
 
-    const inbox = await handleInbox(req("/api/forms/" + form.id + "/submissions", {}, cookie), form.id);
-    const listed = (await inbox.json()) as {
-      submissions: Record<string, unknown>[];
-      files: { filename: string; question_id: string }[];
-    };
-    expect(listed.submissions[0]?.phone).toBe("+201012345678");
-    expect(listed.files.some((f) => f.filename === "cv.pdf" && f.question_id === FILE_ID)).toBe(true);
+    const inbox = await submissions.listInbox(form.id);
+    expect(inbox.submissions[0]?.phone).toBe("+201012345678");
+    expect(inbox.files.some((f) => f.filename === "cv.pdf" && f.question_id === FILE_ID)).toBe(true);
   });
 });
 

@@ -1,11 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { handlePublicSubmit } from "~/server/submissions";
-import { run } from "~/server/run";
+import { readJson, serve } from "~/server/serve";
+import * as submissions from "~/server/services/submissions";
 
 export const Route = createFileRoute("/api/public/forms/$slug/submit")({
   server: {
     handlers: {
-      POST: ({ request, params }) => run(() => handlePublicSubmit(request, params.slug)),
+      POST: async ({ request, params }) =>
+        serve(async () => {
+          const body = await readJson<{ answers?: unknown }>(request);
+          return submissions.submitPublic(params.slug, body?.answers);
+        }),
     },
   },
 });
