@@ -47,12 +47,12 @@ export function LandingPage({ showAdmin = false }: { showAdmin?: boolean }) {
             </p>
             <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {FORM_TEMPLATES.map((template) => (
-                <Card key={template.id} className="flex flex-col">
+                <Card key={template.id} className="h-full">
                   <CardHeader>
                     <CardTitle>{template.name}</CardTitle>
                     <CardDescription>{template.description}</CardDescription>
                   </CardHeader>
-                  <CardFooter>
+                  <CardFooter className="mt-auto">
                     <Button asChild>
                       <Link to="/examples/$slug" params={{ slug: template.id }}>
                         Open form
