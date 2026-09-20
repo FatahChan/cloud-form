@@ -15,7 +15,7 @@ export function CloudFormLogo({ className, title = "Cloud Form" }: Props) {
     <img
       src={cloudFormLogoUrl}
       alt={title}
-      className={cn("block size-6 shrink-0 dark:invert", className)}
+      className={cn("block size-8 shrink-0 object-contain dark:invert", className)}
     />
   );
 }

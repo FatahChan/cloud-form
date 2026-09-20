@@ -59,7 +59,7 @@ function AdminLayout() {
     <div className="flex min-h-svh flex-col">
       <header className="sticky top-0 z-20 border-b bg-background/80 backdrop-blur">
         <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-1 px-4">
-          <Link to="/admin" className="mr-3 text-foreground hover:text-foreground">
+          <Link to="/admin" className="mr-3 flex items-center text-foreground hover:text-foreground">
             <CloudFormLogoLink />
           </Link>
           {nav.map((item) => (

@@ -7,15 +7,15 @@ export function SiteHeader({ showAdmin = false }: { showAdmin?: boolean }) {
   return (
     <header className="sticky top-0 z-20 border-b bg-background/80 backdrop-blur">
       <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-3 px-4">
-        <Link to="/" className="text-foreground hover:text-foreground">
+        <Link to="/" className="inline-flex h-14 items-center text-foreground hover:text-foreground">
           <CloudFormLogoLink />
         </Link>
-        <Link to="/" hash="examples" className="hidden text-sm text-muted-foreground hover:text-foreground sm:inline">
+        <Link to="/" hash="examples" className="hidden h-14 items-center text-sm text-muted-foreground hover:text-foreground sm:inline-flex">
           Examples
         </Link>
         <a
           href="https://github.com/FatahChan/cloud-form"
-          className="hidden text-sm text-muted-foreground hover:text-foreground sm:inline"
+          className="hidden h-14 items-center text-sm text-muted-foreground hover:text-foreground sm:inline-flex"
         >
           GitHub
         </a>
