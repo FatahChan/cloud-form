@@ -1,5 +1,6 @@
 import { Link, Outlet, createFileRoute, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { api } from "~/lib/api";
 import type { SessionUser } from "~/server/session";
@@ -68,6 +69,7 @@ function AdminLayout() {
             </Button>
           ))}
           <div className="ml-auto flex items-center gap-3">
+            <ThemeToggle />
             <span className="hidden text-sm text-muted-foreground sm:inline">{user.name}</span>
             <Button
               variant="outline"
