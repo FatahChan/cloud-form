@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="Cloud Form — Typeform-style forms with templates, multi-page flows, inbox, and file uploads on one Cloudflare Worker (D1 + R2)."
+      content="Cloud Form — Typeform-style forms with templates, branching flows, inbox, and file uploads on one Cloudflare Worker (D1 + R2)."
     />
     <title>Cloud Form</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -445,7 +445,7 @@
         <p class="badge">Open source · Cloudflare Workers</p>
         <h1>Forms that feel like Typeform, deploy like a single Worker.</h1>
         <p>
-          A full Typeform-style builder and respondent experience on Cloudflare: multi-page flows, templates,
+          A full Typeform-style builder and respondent experience on Cloudflare: branching multi-page flows, templates,
           searchable inbox, and file uploads — one Worker, D1, and R2. No separate API server.
         </p>
         <div class="hero-actions">
@@ -493,7 +493,7 @@ npm run deploy</code></pre>
               </div>
               <h3>Typeform-style flows</h3>
               <p>
-                Centered welcome and thank-you screens, progress bar, and multiple questions per step — respondents stay focused.
+                Welcome and thank-you screens, multiple questions per step, and branching so later pages can skip or change based on answers.
               </p>
             </article>
             <article class="spotlight-card spotlight-card--accent">
@@ -519,7 +519,7 @@ npm run deploy</code></pre>
               </div>
               <h3>Visual builder</h3>
               <p>
-                Drag-and-drop questions, organize pages in the sidebar, and publish when the schema is valid — with live preview.
+                Drag-and-drop questions, then switch to the Flow map to draw branches — if Gender is Female, ask if they are married.
               </p>
             </article>
             <article class="spotlight-card spotlight-card--accent">

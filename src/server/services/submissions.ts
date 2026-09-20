@@ -3,11 +3,11 @@ import {
   liveQuestions,
   normalizeFormSchema,
   normalizePhone,
-  parseAnswers,
   type ColumnQuestion,
   type FormSchema,
   type Question,
 } from "../../shared/schema";
+import { parseAnswers } from "../../shared/answers";
 import { HttpError } from "../errors";
 import { copyPending, putPending } from "../files";
 import { columnName, tableName } from "../formTable";

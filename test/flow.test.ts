@@ -6,7 +6,8 @@ import * as forms from "../src/server/services/forms";
 import * as submissions from "../src/server/services/submissions";
 import { tableName } from "../src/server/formTable";
 import { validateSession } from "../src/server/session";
-import { unpublishedChanges, newQuestion, parseAnswers, type FormSchema } from "../src/shared/schema";
+import { parseAnswers } from "../src/shared/answers";
+import { unpublishedChanges, newQuestion, type FormSchema } from "../src/shared/schema";
 import { slugify } from "../src/shared/slug";
 
 const EMAIL_ID = "33333333-3333-4333-8333-333333333333";

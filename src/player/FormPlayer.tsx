@@ -8,6 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { api, ApiError } from "~/lib/api";
 import { PhoneField } from "./PhoneField";
+import { MAX_FLOW_STEPS, resolveNext } from "~/shared/flow";
 import {
   acceptAttr,
   FILE_KINDS,
@@ -22,7 +23,7 @@ import {
 
 export type PlayerScreen = "welcome" | "ending" | { questionId: string } | { pageId: string };
 
-type Phase = { kind: "welcome" } | { kind: "page"; i: number } | { kind: "ending" };
+type Phase = { kind: "welcome" } | { kind: "page"; pageId: string } | { kind: "ending" };
 
 type Props = {
   schema: FormSchema;
@@ -47,35 +48,45 @@ export function FormPlayer({ schema, mode, slug, screen }: Props) {
   const walk = useMemo(() => livePages(schema, mode === "preview"), [mode, schema]);
   const barPages = useMemo(() => livePages(schema, false), [schema]);
   const [phase, setPhase] = useState<Phase>({ kind: "welcome" });
+  const [visitStack, setVisitStack] = useState<string[]>([]);
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (mode !== "preview" || screen === undefined) return;
-    if (screen === "welcome") setPhase({ kind: "welcome" });
-    else if (screen === "ending") setPhase({ kind: "ending" });
-    else if (isPageScreen(screen)) {
-      const i = walk.findIndex((p) => p.id === screen.pageId);
-      if (i >= 0) setPhase({ kind: "page", i });
+    if (screen === "welcome") {
+      setPhase({ kind: "welcome" });
+      setVisitStack([]);
+    } else if (screen === "ending") {
+      setPhase({ kind: "ending" });
+    } else if (isPageScreen(screen)) {
+      const page = walk.find((p) => p.id === screen.pageId);
+      if (page) {
+        setPhase({ kind: "page", pageId: page.id });
+        setVisitStack([page.id]);
+      }
     } else if (isQuestionScreen(screen)) {
-      const i = walk.findIndex((p) => p.questionIds.includes(screen.questionId));
-      if (i >= 0) setPhase({ kind: "page", i });
+      const page = walk.find((p) => p.questionIds.includes(screen.questionId));
+      if (page) {
+        setPhase({ kind: "page", pageId: page.id });
+        setVisitStack([page.id]);
+      }
     }
   }, [mode, screen, walk]);
 
-  const page: FormPage | undefined = phase.kind === "page" ? walk[phase.i] : undefined;
+  const page: FormPage | undefined = phase.kind === "page" ? walk.find((p) => p.id === phase.pageId) : undefined;
   const pageQs = page ? questionsOnPage(schema, page) : [];
-  const barIndex = page ? barPages.findIndex((p) => p.id === page.id) : -1;
-  const nextPage = (from: number) => from + 1;
-  const isLastPage = phase.kind === "page" && nextPage(phase.i) >= walk.length;
+  const nextTarget = page ? resolveNext(schema, page.id, answers) : undefined;
+  const isLastPage = phase.kind === "page" && nextTarget?.kind === "ending";
+  // ponytail: progress is visit count / default page count; branching paths can be shorter or longer than that
   const progress =
     barPages.length === 0
       ? 0
       : phase.kind === "ending"
         ? 100
-        : barIndex >= 0
-          ? (barIndex / barPages.length) * 100
+        : visitStack.length
+          ? Math.min(99, (visitStack.length / barPages.length) * 100)
           : 0;
 
   const setAns = (id: string, v: unknown) => {
@@ -134,12 +145,15 @@ export function FormPlayer({ schema, mode, slug, screen }: Props) {
   const goNext = useCallback(async () => {
     setError(null);
     if (phase.kind === "welcome") {
-      if (walk.length) setPhase({ kind: "page", i: 0 });
-      else await submitOrThanks();
+      const first = walk[0];
+      if (first) {
+        setVisitStack([first.id]);
+        setPhase({ kind: "page", pageId: first.id });
+      } else await submitOrThanks();
       return;
     }
     if (phase.kind !== "page") return;
-    const cur = walk[phase.i];
+    const cur = walk.find((p) => p.id === phase.pageId);
     if (cur) {
       const err = validatePage(questionsOnPage(schema, cur));
       if (err) {
@@ -147,22 +161,30 @@ export function FormPlayer({ schema, mode, slug, screen }: Props) {
         return;
       }
     }
-    const n = nextPage(phase.i);
-    if (n < walk.length) setPhase({ kind: "page", i: n });
-    else await submitOrThanks();
-  }, [phase, walk, schema, submitOrThanks, answers]);
+    if (visitStack.length >= MAX_FLOW_STEPS) {
+      await submitOrThanks();
+      return;
+    }
+    const next = resolveNext(schema, phase.pageId, answers);
+    if (next.kind === "page") {
+      setVisitStack((s) => [...s, next.pageId]);
+      setPhase({ kind: "page", pageId: next.pageId });
+    } else await submitOrThanks();
+  }, [phase, walk, schema, submitOrThanks, answers, visitStack.length]);
 
   const goBack = () => {
     setError(null);
     if (phase.kind === "ending") {
-      const n = walk.length - 1;
-      if (n >= 0) setPhase({ kind: "page", i: n });
+      const last = visitStack[visitStack.length - 1] ?? walk[walk.length - 1]?.id;
+      if (last) setPhase({ kind: "page", pageId: last });
       else setPhase({ kind: "welcome" });
       return;
     }
     if (phase.kind === "page") {
-      const n = phase.i - 1;
-      if (n >= 0) setPhase({ kind: "page", i: n });
+      const nextStack = visitStack.slice(0, -1);
+      setVisitStack(nextStack);
+      const prev = nextStack[nextStack.length - 1];
+      if (prev) setPhase({ kind: "page", pageId: prev });
       else setPhase({ kind: "welcome" });
     }
   };

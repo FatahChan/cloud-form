@@ -15,13 +15,18 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { FormPlayer, type PlayerScreen } from "~/player/FormPlayer";
+import { FlowMap } from "~/builder/FlowMap";
+import { PageLogic } from "~/builder/PageLogic";
+import { unreachablePages, routingError } from "~/shared/flow";
 import {
   FILE_KINDS,
   newPage,
   newQuestion,
   normalizeFormSchema,
+  pageLabel,
   publishSchemaError,
   questionsOnPage,
+  removePage,
   unpublishedChanges,
   type FileKind,
   type FormPage,
@@ -70,7 +75,7 @@ function targetPageId(schema: FormSchema, selected: PlayerScreen): string | unde
 }
 
 function pageTitle(page: FormPage, index: number): string {
-  return page.title?.trim() || `Page ${index + 1}`;
+  return pageLabel(page, index);
 }
 
 function moveQuestion(schema: FormSchema, questionId: string, destPageId: string, destIndex?: number): FormSchema {
@@ -88,6 +93,7 @@ export function Builder(props: Props) {
   const [schema, setSchema] = useState<FormSchema>(() => normalizeFormSchema(props.schema));
   const [published, setPublished] = useState(props.published);
   const [selected, setSelected] = useState<PlayerScreen>("welcome");
+  const [view, setView] = useState<"build" | "flow">("build");
   const [err, setErr] = useState<string | null>(null);
   const publishedTitle = useRef(props.title);
   const saved = useRef<string | null>(null);
@@ -99,6 +105,7 @@ export function Builder(props: Props) {
   const diff = useMemo(() => unpublishedChanges(schema, props.publishedSchema), [schema, props.publishedSchema]);
   const canPublish = !published || diff.lines.length > 0 || title.trim() !== publishedTitle.current.trim();
   const pages = schema.pages ?? [];
+  const deadPages = useMemo(() => unreachablePages(schema), [schema]);
 
   useEffect(() => {
     const now = JSON.stringify({ title, schema });
@@ -167,6 +174,14 @@ export function Builder(props: Props) {
     setSelected({ pageId: page.id });
   }
 
+  function deletePage(pageId: string) {
+    const n = normalizeFormSchema(schema);
+    const idx = n.pages.findIndex((p) => p.id === pageId);
+    const dest = (idx > 0 ? n.pages[idx - 1] : n.pages[idx + 1]) ?? undefined;
+    setSchema((s) => removePage(s, pageId));
+    setSelected(dest ? { pageId: dest.id } : "welcome");
+  }
+
   function onDragEnd(e: DragEndEvent) {
     const { active, over } = e;
     if (!over || active.id === over.id) return;
@@ -201,7 +216,7 @@ export function Builder(props: Props) {
 
   async function publishLive() {
     setErr(null);
-    const pubErr = publishSchemaError(schema);
+    const pubErr = publishSchemaError(schema) ?? routingError(schema);
     if (pubErr) {
       setErr(pubErr);
       return;
@@ -255,7 +270,32 @@ export function Builder(props: Props) {
             <AlertDescription>{err}</AlertDescription>
           </Alert>
         )}
+        {deadPages.length > 0 && !err && (
+          <Alert className="min-w-0 flex-1">
+            <AlertDescription>
+              Unreachable: {deadPages.map((p, i) => pageTitle(p, pages.indexOf(p) >= 0 ? pages.indexOf(p) : i)).join(", ")}
+            </AlertDescription>
+          </Alert>
+        )}
         <div className="ml-auto flex shrink-0 flex-wrap justify-end gap-2">
+          <div className="flex rounded-lg border p-0.5">
+            <Button
+              type="button"
+              size="sm"
+              variant={view === "build" ? "secondary" : "ghost"}
+              onClick={() => setView("build")}
+            >
+              Build
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={view === "flow" ? "secondary" : "ghost"}
+              onClick={() => setView("flow")}
+            >
+              Flow
+            </Button>
+          </div>
           {canPublish && (
             <Button type="button" onClick={() => void publishLive()}>
               {published ? "Publish changes" : "Publish"}
@@ -369,8 +409,12 @@ export function Builder(props: Props) {
           </Select>
         </div>
       </aside>
-      <div className="min-h-[50vh] bg-muted/30">
-        <FormPlayer mode="preview" schema={schema} screen={selected} />
+      <div className="h-full min-h-[50vh] bg-muted/30">
+        {view === "flow" ? (
+          <FlowMap schema={schema} selected={selected} onSelect={setSelected} onChange={setSchema} />
+        ) : (
+          <FormPlayer mode="preview" schema={schema} screen={selected} />
+        )}
       </div>
       <aside className="min-h-0 border-l bg-card">
         <ScrollArea className="h-full">
@@ -439,6 +483,12 @@ export function Builder(props: Props) {
                     }
                   />
                 </Field>
+                <PageLogic schema={schema} page={inspectPage} onChange={(fn) => patchPage(inspectPage.id, fn)} />
+                {pages.length > 1 && (
+                  <Button type="button" variant="destructive" onClick={() => deletePage(inspectPage.id)}>
+                    Delete page
+                  </Button>
+                )}
               </>
             )}
             {inspectQuestion && (

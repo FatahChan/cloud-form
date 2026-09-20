@@ -98,14 +98,49 @@ export const questionSchema = z.discriminatedUnion("type", [
 export type Question = z.infer<typeof questionSchema>;
 export type ColumnQuestion = Exclude<Question, { type: "statement" }>;
 
+export const logicOpSchema = z.enum(["eq", "neq", "empty", "not_empty", "contains", "not_contains"]);
+export type LogicOp = z.infer<typeof logicOpSchema>;
+
+export const logicConditionSchema = z.object({
+  questionId: z.string().uuid(),
+  op: logicOpSchema,
+  value: z.string().max(200).optional(),
+});
+export type LogicCondition = z.infer<typeof logicConditionSchema>;
+
+export const pageRuleTargetSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("page"), pageId: z.string().uuid() }),
+  z.object({ kind: z.literal("ending") }),
+]);
+export type PageRuleTarget = z.infer<typeof pageRuleTargetSchema>;
+
+export const pageRuleSchema = z.object({
+  id: z.string().uuid(),
+  conditions: z.array(logicConditionSchema).max(8),
+  target: pageRuleTargetSchema,
+});
+export type PageRule = z.infer<typeof pageRuleSchema>;
+
+export const pageRoutingSchema = z.object({
+  rules: z.array(pageRuleSchema).max(20),
+});
+export type PageRouting = z.infer<typeof pageRoutingSchema>;
+
 export const pageSchema = z.object({
   id: z.string().uuid(),
   title: z.string().max(200).optional(),
   description: z.string().max(2000).optional(),
   questionIds: z.array(z.string().uuid()),
+  routing: pageRoutingSchema.optional(),
 });
 
 export type FormPage = z.infer<typeof pageSchema>;
+
+const flowPositionSchema = z.object({
+  x: z.number(),
+  y: z.number(),
+});
+export type FlowPosition = z.infer<typeof flowPositionSchema>;
 
 export const formSchema = z
   .object({
@@ -120,6 +155,7 @@ export const formSchema = z
       title: z.string().min(1).max(200),
       description: z.string().max(2000).optional(),
     }),
+    flowPositions: z.record(flowPositionSchema).optional(),
   })
   .refine((s) => {
     const slugs = s.questions.filter((q) => q.type !== "statement").map((q) => q.slug);
@@ -130,6 +166,48 @@ export type FormSchema = z.infer<typeof formSchema>;
 
 export function newPage(questionIds: string[] = []): FormPage {
   return { id: crypto.randomUUID(), questionIds };
+}
+
+export function pageLabel(page: FormPage, index: number): string {
+  return page.title?.trim() || `Page ${index + 1}`;
+}
+
+/** Move this page's questions onto the previous page (or the next, if this is first), then drop the page. */
+export function removePage(schema: FormSchema, pageId: string): FormSchema {
+  const n = normalizeFormSchema(schema);
+  const idx = n.pages.findIndex((p) => p.id === pageId);
+  if (idx < 0 || n.pages.length < 2) return n;
+  const dest = n.pages[idx - 1] ?? n.pages[idx + 1];
+  const gone = n.pages[idx];
+  if (!dest || !gone || dest.id === gone.id) return n;
+  const destIds = [...dest.questionIds, ...gone.questionIds];
+  const pages = n.pages
+    .filter((p) => p.id !== pageId)
+    .map((p) => (p.id === dest.id ? { ...p, questionIds: destIds } : p));
+  return normalizeFormSchema({ ...n, pages });
+}
+
+function cleanRouting(page: FormPage, pageIds: Set<string>, qIds: Set<string>): PageRouting | undefined {
+  const rules = (page.routing?.rules ?? [])
+    .map((rule) => {
+      const conditions = rule.conditions.filter((c) => qIds.has(c.questionId));
+      return { ...rule, conditions };
+    })
+    .filter((rule) => {
+      if (rule.target.kind === "ending") return true;
+      return pageIds.has(rule.target.pageId) && rule.target.pageId !== page.id;
+    });
+  return rules.length ? { rules } : undefined;
+}
+
+function cleanFlowPositions(schema: FormSchema, pageIds: Set<string>): FormSchema["flowPositions"] {
+  const raw = schema.flowPositions;
+  if (!raw) return undefined;
+  const keep: Record<string, FlowPosition> = {};
+  for (const [id, pos] of Object.entries(raw)) {
+    if (id === "welcome" || id === "ending" || pageIds.has(id)) keep[id] = pos;
+  }
+  return Object.keys(keep).length ? keep : undefined;
 }
 
 export function pagesError(schema: { questions: Question[]; pages?: FormPage[] }): string | null {
@@ -146,7 +224,7 @@ export function pagesError(schema: { questions: Question[]; pages?: FormPage[] }
   return null;
 }
 
-export function normalizeFormSchema(schema: FormSchema): FormSchema {
+export function normalizeFormSchema(schema: FormSchema): FormSchema & { pages: FormPage[] } {
   const qIds = schema.questions.map((q) => q.id);
   const qSet = new Set(qIds);
   const raw = schema.pages ?? [];
@@ -163,6 +241,7 @@ export function normalizeFormSchema(schema: FormSchema): FormSchema {
       title: p.title,
       description: p.description,
       questionIds,
+      routing: p.routing,
     });
   }
   const missing = qIds.filter((id) => !seen.has(id));
@@ -172,6 +251,11 @@ export function normalizeFormSchema(schema: FormSchema): FormSchema {
     } else {
       pages[pages.length - 1]!.questionIds.push(...missing);
     }
+  }
+  const pageIds = new Set(pages.map((p) => p.id));
+  const qIdSet = new Set(qIds);
+  for (const p of pages) {
+    p.routing = cleanRouting(p, pageIds, qIdSet);
   }
   const byId = new Map(schema.questions.map((q) => [q.id, q]));
   const questions: Question[] = [];
@@ -188,7 +272,7 @@ export function normalizeFormSchema(schema: FormSchema): FormSchema {
   for (const q of schema.questions) {
     if (!used.has(q.id)) questions.push(q);
   }
-  return { ...schema, questions, pages };
+  return { ...schema, questions, pages, flowPositions: cleanFlowPositions(schema, pageIds) };
 }
 
 export function livePages(schema: FormSchema, includeRetired = false): FormPage[] {
@@ -282,95 +366,6 @@ export function normalizePhone(raw: string): string | null {
   return parsed.number;
 }
 
-export function parseAnswers(
-  schema: FormSchema,
-  body: unknown,
-): { ok: true; data: Answers } | { ok: false; error: string } {
-  if (!body || typeof body !== "object" || Array.isArray(body)) {
-    return { ok: false, error: "answers must be an object" };
-  }
-  const raw = body as Record<string, unknown>;
-  const out: Answers = {};
-  for (const q of liveQuestions(schema)) {
-    if (q.type === "statement") continue;
-    const v = raw[q.id];
-    const required = q.required;
-    if (v === undefined || v === null || v === "") {
-      if (required) return { ok: false, error: `Missing ${q.title}` };
-      continue;
-    }
-    switch (q.type) {
-      case "short_text":
-      case "long_text": {
-        if (typeof v !== "string") return { ok: false, error: `${q.title} must be text` };
-        const t = v.trim();
-        if (!t && required) return { ok: false, error: `Missing ${q.title}` };
-        if (t) out[q.id] = t;
-        break;
-      }
-      case "email": {
-        if (typeof v !== "string") return { ok: false, error: `${q.title} must be an email` };
-        const t = v.trim().toLowerCase();
-        const er = z.string().email().safeParse(t);
-        if (!er.success) return { ok: false, error: `${q.title} must be an email` };
-        out[q.id] = t;
-        break;
-      }
-      case "phone": {
-        if (typeof v !== "string") return { ok: false, error: `${q.title} must be a phone number` };
-        const t = normalizePhone(v);
-        if (!t) return { ok: false, error: `${q.title} must be a phone number` };
-        out[q.id] = t;
-        break;
-      }
-      case "number": {
-        const n = typeof v === "number" ? v : typeof v === "string" ? Number(v) : NaN;
-        if (!Number.isFinite(n)) return { ok: false, error: `${q.title} must be a number` };
-        if (q.min !== undefined && n < q.min) return { ok: false, error: `${q.title} is too small` };
-        if (q.max !== undefined && n > q.max) return { ok: false, error: `${q.title} is too large` };
-        out[q.id] = n;
-        break;
-      }
-      case "date": {
-        if (typeof v !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(v)) {
-          return { ok: false, error: `${q.title} must be a date` };
-        }
-        out[q.id] = v;
-        break;
-      }
-      case "select": {
-        if (typeof v !== "string" || !q.options.includes(v)) {
-          return { ok: false, error: `${q.title} is not a valid choice` };
-        }
-        out[q.id] = v;
-        break;
-      }
-      case "multi_select": {
-        if (!Array.isArray(v) || v.some((x) => typeof x !== "string" || !q.options.includes(x))) {
-          return { ok: false, error: `${q.title} has invalid choices` };
-        }
-        if (required && v.length === 0) return { ok: false, error: `Missing ${q.title}` };
-        out[q.id] = v;
-        break;
-      }
-      case "file": {
-        const uploadId =
-          typeof v === "object" && v && "uploadId" in v && typeof (v as { uploadId: unknown }).uploadId === "string"
-            ? (v as { uploadId: string }).uploadId
-            : typeof v === "string"
-              ? v
-              : null;
-        if (!uploadId || !z.string().uuid().safeParse(uploadId).success) {
-          return { ok: false, error: `${q.title} needs a file` };
-        }
-        out[q.id] = { uploadId };
-        break;
-      }
-    }
-  }
-  return { ok: true, data: out };
-}
-
 export function schemaEditError(_prev: FormSchema, next: FormSchema, published: FormSchema | null): string | null {
   const pubById = new Map((published?.questions ?? []).map((q) => [q.id, q]));
   for (const q of next.questions) {
@@ -416,6 +411,12 @@ function pageLayoutKey(schema: FormSchema): string {
     .join("|");
 }
 
+function routingKey(schema: FormSchema): string {
+  return JSON.stringify(
+    normalizeFormSchema(schema).pages.map((p) => p.routing ?? null),
+  );
+}
+
 export function unpublishedChanges(draft: FormSchema, published: FormSchema | null): SchemaDiff {
   if (!published) {
     return { lines: [], questionIds: new Set(), welcome: false, ending: false, pages: false };
@@ -431,7 +432,9 @@ export function unpublishedChanges(draft: FormSchema, published: FormSchema | nu
     normalizeFormSchema(draft).pages.map((p) => ({ title: p.title, description: p.description })),
     normalizeFormSchema(published).pages.map((p) => ({ title: p.title, description: p.description })),
   );
+  const routingChanged = routingKey(draft) !== routingKey(published);
   if (pages || pageCopyChanged) lines.push("Page layout");
+  if (routingChanged) lines.push("Page logic");
   const pubById = new Map(published.questions.map((q) => [q.id, q]));
   const draftIds = new Set(draft.questions.map((q) => q.id));
   for (const q of published.questions) {
@@ -454,5 +457,5 @@ export function unpublishedChanges(draft: FormSchema, published: FormSchema | nu
   const remaining = published.questions.filter((q) => draftIds.has(q.id)).map((q) => q.id);
   const draftOrder = draft.questions.filter((q) => pubById.has(q.id)).map((q) => q.id);
   if (!pages && remaining.join() !== draftOrder.join()) lines.push("Question order");
-  return { lines, questionIds, welcome, ending, pages: pages || pageCopyChanged };
+  return { lines, questionIds, welcome, ending, pages: pages || pageCopyChanged || routingChanged };
 }
