@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { CheckIcon } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,16 +11,18 @@ import { PhoneField } from "./PhoneField";
 import {
   acceptAttr,
   FILE_KINDS,
-  liveQuestions,
+  livePages,
   normalizePhone,
+  questionsOnPage,
   type FileKind,
+  type FormPage,
   type FormSchema,
   type Question,
 } from "~/shared/schema";
 
-export type PlayerScreen = "welcome" | "ending" | { questionId: string };
+export type PlayerScreen = "welcome" | "ending" | { questionId: string } | { pageId: string };
 
-type Phase = { kind: "welcome" } | { kind: "q"; i: number } | { kind: "ending" };
+type Phase = { kind: "welcome" } | { kind: "page"; i: number } | { kind: "ending" };
 
 type Props = {
   schema: FormSchema;
@@ -32,12 +35,17 @@ function letter(i: number): string {
   return String.fromCharCode(65 + i);
 }
 
+function isQuestionScreen(s: PlayerScreen): s is { questionId: string } {
+  return typeof s === "object" && "questionId" in s;
+}
+
+function isPageScreen(s: PlayerScreen): s is { pageId: string } {
+  return typeof s === "object" && "pageId" in s;
+}
+
 export function FormPlayer({ schema, mode, slug, screen }: Props) {
-  const walk = useMemo(
-    () => (mode === "live" ? liveQuestions(schema) : schema.questions),
-    [mode, schema],
-  );
-  const barQs = useMemo(() => liveQuestions(schema), [schema]);
+  const walk = useMemo(() => livePages(schema, mode === "preview"), [mode, schema]);
+  const barPages = useMemo(() => livePages(schema, false), [schema]);
   const [phase, setPhase] = useState<Phase>({ kind: "welcome" });
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
   const [error, setError] = useState<string | null>(null);
@@ -47,29 +55,27 @@ export function FormPlayer({ schema, mode, slug, screen }: Props) {
     if (mode !== "preview" || screen === undefined) return;
     if (screen === "welcome") setPhase({ kind: "welcome" });
     else if (screen === "ending") setPhase({ kind: "ending" });
-    else {
-      const i = walk.findIndex((q) => q.id === screen.questionId);
-      if (i >= 0) setPhase({ kind: "q", i });
+    else if (isPageScreen(screen)) {
+      const i = walk.findIndex((p) => p.id === screen.pageId);
+      if (i >= 0) setPhase({ kind: "page", i });
+    } else if (isQuestionScreen(screen)) {
+      const i = walk.findIndex((p) => p.questionIds.includes(screen.questionId));
+      if (i >= 0) setPhase({ kind: "page", i });
     }
   }, [mode, screen, walk]);
 
-  const q: Question | undefined = phase.kind === "q" ? walk[phase.i] : undefined;
-  const barIndex = q ? barQs.findIndex((x) => x.id === q.id) : -1;
-  const nextQ = (from: number) => {
-    let n = from + 1;
-    if (mode === "preview") {
-      while (n < walk.length && walk[n]?.retired) n++;
-    }
-    return n;
-  };
-  const isLastQ = phase.kind === "q" && nextQ(phase.i) >= walk.length;
+  const page: FormPage | undefined = phase.kind === "page" ? walk[phase.i] : undefined;
+  const pageQs = page ? questionsOnPage(schema, page) : [];
+  const barIndex = page ? barPages.findIndex((p) => p.id === page.id) : -1;
+  const nextPage = (from: number) => from + 1;
+  const isLastPage = phase.kind === "page" && nextPage(phase.i) >= walk.length;
   const progress =
-    barQs.length === 0
+    barPages.length === 0
       ? 0
       : phase.kind === "ending"
         ? 100
         : barIndex >= 0
-          ? (barIndex / barQs.length) * 100
+          ? (barIndex / barPages.length) * 100
           : 0;
 
   const setAns = (id: string, v: unknown) => {
@@ -89,6 +95,16 @@ export function FormPlayer({ schema, mode, slug, screen }: Props) {
       if (!normalizePhone(v)) return "Enter a valid phone number";
     }
     if (question.type === "file" && !(v && typeof v === "object" && "uploadId" in v)) return "Add a file";
+    return null;
+  };
+
+  const validatePage = (qs: Question[]): string | null => {
+    const prefix = qs.filter((q) => q.type !== "statement").length > 1;
+    for (const q of qs) {
+      const err = validate(q);
+      if (!err) continue;
+      return prefix && q.title.trim() ? `${q.title}: ${err}` : err;
+    }
     return null;
   };
 
@@ -118,68 +134,67 @@ export function FormPlayer({ schema, mode, slug, screen }: Props) {
   const goNext = useCallback(async () => {
     setError(null);
     if (phase.kind === "welcome") {
-      if (walk.length) setPhase({ kind: "q", i: 0 });
+      if (walk.length) setPhase({ kind: "page", i: 0 });
       else await submitOrThanks();
       return;
     }
-    if (phase.kind !== "q") return;
+    if (phase.kind !== "page") return;
     const cur = walk[phase.i];
     if (cur) {
-      const err = validate(cur);
+      const err = validatePage(questionsOnPage(schema, cur));
       if (err) {
         setError(err);
         return;
       }
     }
-    const n = nextQ(phase.i);
-    if (n < walk.length) setPhase({ kind: "q", i: n });
+    const n = nextPage(phase.i);
+    if (n < walk.length) setPhase({ kind: "page", i: n });
     else await submitOrThanks();
-  }, [phase, walk, mode, submitOrThanks]);
+  }, [phase, walk, schema, submitOrThanks, answers]);
 
   const goBack = () => {
     setError(null);
     if (phase.kind === "ending") {
-      let n = walk.length - 1;
-      if (mode === "preview") {
-        while (n >= 0 && walk[n]?.retired) n--;
-      }
-      if (n >= 0) setPhase({ kind: "q", i: n });
+      const n = walk.length - 1;
+      if (n >= 0) setPhase({ kind: "page", i: n });
       else setPhase({ kind: "welcome" });
       return;
     }
-    if (phase.kind === "q") {
-      let n = phase.i - 1;
-      if (mode === "preview") {
-        while (n >= 0 && walk[n]?.retired) n--;
-      }
-      if (n >= 0) setPhase({ kind: "q", i: n });
+    if (phase.kind === "page") {
+      const n = phase.i - 1;
+      if (n >= 0) setPhase({ kind: "page", i: n });
       else setPhase({ kind: "welcome" });
     }
   };
 
+  const choiceQ = pageQs.filter((q) => q.type === "select" || q.type === "multi_select");
+  const loneChoice = choiceQ.length === 1 ? choiceQ[0] : undefined;
+  const hasLongText = pageQs.some((q) => q.type === "long_text");
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Enter" && !e.shiftKey) {
-        if (q?.type === "long_text") return;
+        const tag = (e.target as HTMLElement | null)?.tagName;
+        if (hasLongText && tag === "TEXTAREA") return;
         e.preventDefault();
         void goNext();
         return;
       }
-      if (!q || (q.type !== "select" && q.type !== "multi_select")) return;
+      if (!loneChoice) return;
       const k = e.key.toUpperCase();
       if (k.length !== 1 || k < "A" || k > "Z") return;
       const idx = k.charCodeAt(0) - 65;
-      if (idx >= q.options.length) return;
-      const opt = q.options[idx];
-      if (q.type === "select") setAns(q.id, opt);
+      if (idx >= loneChoice.options.length) return;
+      const opt = loneChoice.options[idx];
+      if (loneChoice.type === "select") setAns(loneChoice.id, opt);
       else {
-        const cur = Array.isArray(answers[q.id]) ? (answers[q.id] as string[]) : [];
-        setAns(q.id, cur.includes(opt) ? cur.filter((x) => x !== opt) : [...cur, opt]);
+        const cur = Array.isArray(answers[loneChoice.id]) ? (answers[loneChoice.id] as string[]) : [];
+        setAns(loneChoice.id, cur.includes(opt) ? cur.filter((x) => x !== opt) : [...cur, opt]);
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [goNext, q, answers]);
+  }, [goNext, hasLongText, loneChoice, answers]);
 
   async function onPickFile(file: File, question: Extract<Question, { type: "file" }>) {
     if (mode === "preview") return;
@@ -202,74 +217,138 @@ export function FormPlayer({ schema, mode, slug, screen }: Props) {
     }
   }
 
+  const firstField = pageQs.find((q) => q.type !== "statement");
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">
-      <Progress value={progress} className="h-1 rounded-none" />
+      {phase.kind !== "welcome" && <Progress value={progress} className="h-1 rounded-none" />}
       {phase.kind === "welcome" && (
-        <Screen title={schema.welcome.title} description={schema.welcome.description}>
-          <Button size="lg" className="w-fit" type="button" onClick={() => void goNext()}>
-            {schema.welcome.button}
-          </Button>
-        </Screen>
+        <WelcomeScreen
+          title={schema.welcome.title}
+          description={schema.welcome.description}
+          button={schema.welcome.button}
+          onStart={() => void goNext()}
+        />
       )}
-      {phase.kind === "q" && q && (
-        <Screen
-          title={q.title}
-          description={q.description}
+      {phase.kind === "page" && page && (
+        <QuestionScreen
+          page={page}
+          questions={pageQs}
+          answers={answers}
           back={goBack}
-          ok={q.type !== "statement" || isLastQ}
           onOk={() => void goNext()}
-          okLabel={isLastQ ? "Submit" : "OK"}
+          okLabel={isLastPage ? "Submit" : "OK"}
           error={error}
           busy={busy}
-        >
-          <Field q={q} value={answers[q.id]} onChange={(v) => setAns(q.id, v)} mode={mode} onPickFile={onPickFile} />
-        </Screen>
+          mode={mode}
+          firstFieldId={firstField?.id}
+          onChange={setAns}
+          onPickFile={onPickFile}
+        />
       )}
       {phase.kind === "ending" && (
-        <Screen
-          title={schema.ending.title}
-          description={schema.ending.description}
-          back={mode === "preview" ? goBack : undefined}
-        />
+        <EndingScreen title={schema.ending.title} description={schema.ending.description} />
       )}
     </div>
   );
 }
 
-function Screen(props: {
-  title: string;
-  description?: string;
-  children?: ReactNode;
-  back?: () => void;
-  ok?: boolean;
-  onOk?: () => void;
-  okLabel?: string;
+function WelcomeScreen(props: { title: string; description?: string; button: string; onStart: () => void }) {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center px-6 py-20 text-center">
+      <h1 className="font-heading max-w-2xl text-4xl font-medium tracking-tight text-balance sm:text-5xl">
+        {props.title}
+      </h1>
+      {props.description && (
+        <p className="mt-5 max-w-lg text-lg leading-relaxed text-muted-foreground text-pretty">{props.description}</p>
+      )}
+      <Button size="lg" className="mt-10 min-w-40 px-8" type="button" onClick={props.onStart}>
+        {props.button}
+      </Button>
+    </div>
+  );
+}
+
+function EndingScreen(props: { title: string; description?: string }) {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center px-6 py-20 text-center">
+      <div className="mb-6 flex size-14 items-center justify-center rounded-full bg-muted">
+        <CheckIcon className="size-7 text-foreground" />
+      </div>
+      <h1 className="font-heading max-w-2xl text-4xl font-medium tracking-tight text-balance sm:text-5xl">
+        {props.title}
+      </h1>
+      {props.description && (
+        <p className="mt-5 max-w-lg text-lg leading-relaxed text-muted-foreground text-pretty">{props.description}</p>
+      )}
+    </div>
+  );
+}
+
+function QuestionScreen(props: {
+  page: FormPage;
+  questions: Question[];
+  answers: Record<string, unknown>;
+  back: () => void;
+  onOk: () => void;
+  okLabel: string;
   error?: string | null;
   busy?: boolean;
+  mode: "live" | "preview";
+  firstFieldId?: string;
+  onChange: (id: string, v: unknown) => void;
+  onPickFile: (file: File, q: Extract<Question, { type: "file" }>) => void;
 }) {
+  const multi = props.questions.filter((q) => q.type !== "statement").length > 1;
   return (
     <div className="mx-auto flex w-full max-w-xl flex-1 flex-col justify-center gap-4 px-6 py-16">
-      {props.back && (
-        <Button variant="ghost" size="sm" className="w-fit px-0" type="button" aria-label="Back" onClick={props.back}>
-          ← Back
-        </Button>
+      <Button variant="ghost" size="sm" className="w-fit" type="button" aria-label="Back" onClick={props.back}>
+        ← Back
+      </Button>
+      {(props.page.title || props.page.description) && (
+        <div className="grid gap-2">
+          {props.page.title && (
+            <h1 className="font-heading text-3xl font-medium tracking-tight text-balance">{props.page.title}</h1>
+          )}
+          {props.page.description && <p className="text-muted-foreground text-pretty">{props.page.description}</p>}
+        </div>
       )}
-      <h1 className="font-heading text-3xl font-medium tracking-tight text-balance">{props.title}</h1>
-      {props.description && <p className="text-muted-foreground">{props.description}</p>}
-      {props.children}
+      <div className="grid gap-2">
+        {props.questions.map((q) => (
+          <div key={q.id} className="grid gap-3">
+            <div className="grid gap-1">
+              <h2
+                className={
+                  multi || props.page.title
+                    ? "font-heading text-xl font-medium tracking-tight text-balance"
+                    : "font-heading text-3xl font-medium tracking-tight text-balance"
+                }
+              >
+                {q.title}
+              </h2>
+              {q.description && <p className="text-muted-foreground">{q.description}</p>}
+            </div>
+            <Field
+              q={q}
+              value={props.answers[q.id]}
+              onChange={(v) => props.onChange(q.id, v)}
+              mode={props.mode}
+              autoFocus={q.id === props.firstFieldId}
+              onPickFile={props.onPickFile}
+            />
+          </div>
+        ))}
+      </div>
       {props.error && (
         <Alert variant="destructive">
           <AlertDescription>{props.error}</AlertDescription>
         </Alert>
       )}
-      {props.ok && (
-        <div>
-          <Button size="lg" className="w-fit" type="button" disabled={props.busy} onClick={props.onOk}>
-            {props.okLabel ?? "OK"} <Kbd className="ml-1">↵</Kbd>
-          </Button>
-        </div>
-      )}
+      <div>
+        <Button size="lg" className="w-fit px-6" type="button" disabled={props.busy} onClick={props.onOk}>
+          {props.okLabel} <Kbd className="ml-1">↵</Kbd>
+        </Button>
+      </div>
     </div>
   );
 }
@@ -279,6 +358,7 @@ function Field(props: {
   value: unknown;
   onChange: (v: unknown) => void;
   mode: "live" | "preview";
+  autoFocus?: boolean;
   onPickFile: (file: File, q: Extract<Question, { type: "file" }>) => void;
 }) {
   const { q, value, onChange } = props;
@@ -286,7 +366,7 @@ function Field(props: {
   if (q.type === "short_text" || q.type === "email") {
     return (
       <Input
-        autoFocus
+        autoFocus={props.autoFocus}
         className="h-11 text-base"
         type={q.type === "email" ? "email" : "text"}
         autoComplete={q.type === "email" ? "email" : undefined}
@@ -305,7 +385,7 @@ function Field(props: {
   if (q.type === "long_text") {
     return (
       <Textarea
-        autoFocus
+        autoFocus={props.autoFocus}
         rows={5}
         className="text-base"
         aria-label={q.title}
@@ -318,7 +398,7 @@ function Field(props: {
   if (q.type === "number") {
     return (
       <Input
-        autoFocus
+        autoFocus={props.autoFocus}
         className="h-11 text-base"
         type="number"
         aria-label={q.title}
@@ -332,7 +412,7 @@ function Field(props: {
   if (q.type === "date") {
     return (
       <Input
-        autoFocus
+        autoFocus={props.autoFocus}
         className="h-11 text-base"
         type="date"
         aria-label={q.title}

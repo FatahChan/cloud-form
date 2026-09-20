@@ -29,5 +29,9 @@ function FillPage() {
     return (
       <div className="flex min-h-svh items-center justify-center p-6 text-muted-foreground">Loading…</div>
     );
-  return <FormPlayer mode="live" slug={slug} schema={data.schema} />;
+  return (
+    <div className="flex min-h-svh flex-col">
+      <FormPlayer mode="live" slug={slug} schema={data.schema} />
+    </div>
+  );
 }

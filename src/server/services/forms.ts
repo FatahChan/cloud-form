@@ -1,5 +1,6 @@
 import {
   defaultFormSchema,
+  normalizeFormSchema,
   parseFormSchema,
   publishSchemaError,
   schemaEditError,
@@ -24,8 +25,10 @@ export type FormRow = {
 };
 
 export function parseStored(row: FormRow): { schema: FormSchema; published: FormSchema | null } {
-  const schema = JSON.parse(row.schema) as FormSchema;
-  const published = row.published_schema ? (JSON.parse(row.published_schema) as FormSchema) : null;
+  const schema = normalizeFormSchema(JSON.parse(row.schema) as FormSchema);
+  const published = row.published_schema
+    ? normalizeFormSchema(JSON.parse(row.published_schema) as FormSchema)
+    : null;
   return { schema, published };
 }
 

@@ -98,6 +98,15 @@ export const questionSchema = z.discriminatedUnion("type", [
 export type Question = z.infer<typeof questionSchema>;
 export type ColumnQuestion = Exclude<Question, { type: "statement" }>;
 
+export const pageSchema = z.object({
+  id: z.string().uuid(),
+  title: z.string().max(200).optional(),
+  description: z.string().max(2000).optional(),
+  questionIds: z.array(z.string().uuid()),
+});
+
+export type FormPage = z.infer<typeof pageSchema>;
+
 export const formSchema = z
   .object({
     welcome: z.object({
@@ -106,6 +115,7 @@ export const formSchema = z
       button: z.string().min(1).max(40),
     }),
     questions: z.array(questionSchema).max(50),
+    pages: z.array(pageSchema).optional(),
     ending: z.object({
       title: z.string().min(1).max(200),
       description: z.string().max(2000).optional(),
@@ -118,6 +128,86 @@ export const formSchema = z
 
 export type FormSchema = z.infer<typeof formSchema>;
 
+export function newPage(questionIds: string[] = []): FormPage {
+  return { id: crypto.randomUUID(), questionIds };
+}
+
+export function pagesError(schema: { questions: Question[]; pages?: FormPage[] }): string | null {
+  if (!schema.pages) return null;
+  const qSet = new Set(schema.questions.map((q) => q.id));
+  const seen = new Set<string>();
+  for (const p of schema.pages) {
+    for (const id of p.questionIds) {
+      if (!qSet.has(id)) return "Unknown question on page";
+      if (seen.has(id)) return "Question appears on more than one page";
+      seen.add(id);
+    }
+  }
+  return null;
+}
+
+export function normalizeFormSchema(schema: FormSchema): FormSchema {
+  const qIds = schema.questions.map((q) => q.id);
+  const qSet = new Set(qIds);
+  const raw = schema.pages ?? [];
+  if (raw.length === 0) {
+    return { ...schema, pages: qIds.map((id) => newPage([id])), questions: schema.questions };
+  }
+  const seen = new Set<string>();
+  const pages: FormPage[] = [];
+  for (const p of raw) {
+    const questionIds = p.questionIds.filter((id) => qSet.has(id) && !seen.has(id));
+    for (const id of questionIds) seen.add(id);
+    pages.push({
+      id: p.id,
+      title: p.title,
+      description: p.description,
+      questionIds,
+    });
+  }
+  const missing = qIds.filter((id) => !seen.has(id));
+  if (missing.length) {
+    if (pages.length === 0) {
+      for (const id of missing) pages.push(newPage([id]));
+    } else {
+      pages[pages.length - 1]!.questionIds.push(...missing);
+    }
+  }
+  const byId = new Map(schema.questions.map((q) => [q.id, q]));
+  const questions: Question[] = [];
+  const used = new Set<string>();
+  for (const p of pages) {
+    for (const id of p.questionIds) {
+      const q = byId.get(id);
+      if (q && !used.has(id)) {
+        questions.push(q);
+        used.add(id);
+      }
+    }
+  }
+  for (const q of schema.questions) {
+    if (!used.has(q.id)) questions.push(q);
+  }
+  return { ...schema, questions, pages };
+}
+
+export function livePages(schema: FormSchema, includeRetired = false): FormPage[] {
+  const n = normalizeFormSchema(schema);
+  const keep = new Set(n.questions.filter((q) => includeRetired || !q.retired).map((q) => q.id));
+  return n.pages
+    .map((p) => ({ ...p, questionIds: p.questionIds.filter((id) => keep.has(id)) }))
+    .filter((p) => p.questionIds.length > 0);
+}
+
+export function questionsOnPage(schema: FormSchema, page: FormPage): Question[] {
+  const byId = new Map(schema.questions.map((q) => [q.id, q]));
+  return page.questionIds.map((id) => byId.get(id)).filter((q): q is Question => !!q);
+}
+
+export function pageForQuestion(schema: FormSchema, questionId: string): FormPage | undefined {
+  return normalizeFormSchema(schema).pages.find((p) => p.questionIds.includes(questionId));
+}
+
 export function columnQuestions(schema: FormSchema): ColumnQuestion[] {
   return schema.questions.filter((q): q is ColumnQuestion => q.type !== "statement");
 }
@@ -129,7 +219,9 @@ export function liveQuestions(schema: FormSchema): Question[] {
 export function parseFormSchema(input: unknown): { ok: true; data: FormSchema } | { ok: false; error: string } {
   const r = formSchema.safeParse(input);
   if (!r.success) return { ok: false, error: r.error.issues[0]?.message ?? "Invalid schema" };
-  return { ok: true, data: r.data };
+  const layout = pagesError(r.data);
+  if (layout) return { ok: false, error: layout };
+  return { ok: true, data: normalizeFormSchema(r.data) };
 }
 
 export function newQuestion(type: Question["type"], taken: Set<string>): Question {
@@ -149,17 +241,19 @@ export function newQuestion(type: Question["type"], taken: Set<string>): Questio
 }
 
 export function defaultFormSchema(): FormSchema {
+  const id = crypto.randomUUID();
   return {
     welcome: { title: "Hello", button: "Start" },
     questions: [
       {
         type: "short_text",
-        id: crypto.randomUUID(),
+        id,
         slug: "what_is_your_name",
         title: "What is your name?",
         required: true,
       },
     ],
+    pages: [{ id: crypto.randomUUID(), questionIds: [id] }],
     ending: { title: "Thanks" },
   };
 }
@@ -301,6 +395,7 @@ export type SchemaDiff = {
   questionIds: Set<string>;
   welcome: boolean;
   ending: boolean;
+  pages: boolean;
 };
 
 function sameJson(a: unknown, b: unknown): boolean {
@@ -315,9 +410,15 @@ function questionChangeLine(old: Question, next: Question): string | null {
   return `Updated “${next.title}”`;
 }
 
+function pageLayoutKey(schema: FormSchema): string {
+  return normalizeFormSchema(schema)
+    .pages.map((p) => p.questionIds.join(","))
+    .join("|");
+}
+
 export function unpublishedChanges(draft: FormSchema, published: FormSchema | null): SchemaDiff {
   if (!published) {
-    return { lines: [], questionIds: new Set(), welcome: false, ending: false };
+    return { lines: [], questionIds: new Set(), welcome: false, ending: false, pages: false };
   }
   const lines: string[] = [];
   const questionIds = new Set<string>();
@@ -325,6 +426,12 @@ export function unpublishedChanges(draft: FormSchema, published: FormSchema | nu
   const ending = !sameJson(draft.ending, published.ending);
   if (welcome) lines.push("Welcome screen");
   if (ending) lines.push("Ending screen");
+  const pages = pageLayoutKey(draft) !== pageLayoutKey(published);
+  const pageCopyChanged = !sameJson(
+    normalizeFormSchema(draft).pages.map((p) => ({ title: p.title, description: p.description })),
+    normalizeFormSchema(published).pages.map((p) => ({ title: p.title, description: p.description })),
+  );
+  if (pages || pageCopyChanged) lines.push("Page layout");
   const pubById = new Map(published.questions.map((q) => [q.id, q]));
   const draftIds = new Set(draft.questions.map((q) => q.id));
   for (const q of published.questions) {
@@ -346,6 +453,6 @@ export function unpublishedChanges(draft: FormSchema, published: FormSchema | nu
   }
   const remaining = published.questions.filter((q) => draftIds.has(q.id)).map((q) => q.id);
   const draftOrder = draft.questions.filter((q) => pubById.has(q.id)).map((q) => q.id);
-  if (remaining.join() !== draftOrder.join()) lines.push("Question order");
-  return { lines, questionIds, welcome, ending };
+  if (!pages && remaining.join() !== draftOrder.join()) lines.push("Question order");
+  return { lines, questionIds, welcome, ending, pages: pages || pageCopyChanged };
 }

@@ -1,4 +1,4 @@
-import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { DndContext, PointerSensor, closestCenter, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -15,7 +15,19 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { FormPlayer, type PlayerScreen } from "~/player/FormPlayer";
-import { FILE_KINDS, newQuestion, publishSchemaError, unpublishedChanges, type FileKind, type FormSchema, type Question } from "~/shared/schema";
+import {
+  FILE_KINDS,
+  newPage,
+  newQuestion,
+  normalizeFormSchema,
+  publishSchemaError,
+  questionsOnPage,
+  unpublishedChanges,
+  type FileKind,
+  type FormPage,
+  type FormSchema,
+  type Question,
+} from "~/shared/schema";
 import { slugify } from "~/shared/slug";
 import { api, ApiError } from "~/lib/api";
 
@@ -42,13 +54,42 @@ type Props = {
   onMeta: (p: { title: string; published: boolean; publishedSchema?: FormSchema | null }) => void;
 };
 
+function isQuestionScreen(s: PlayerScreen): s is { questionId: string } {
+  return typeof s === "object" && "questionId" in s;
+}
+
+function isPageScreen(s: PlayerScreen): s is { pageId: string } {
+  return typeof s === "object" && "pageId" in s;
+}
+
+function targetPageId(schema: FormSchema, selected: PlayerScreen): string | undefined {
+  const pages = normalizeFormSchema(schema).pages;
+  if (isPageScreen(selected)) return selected.pageId;
+  if (isQuestionScreen(selected)) return pages.find((p) => p.questionIds.includes(selected.questionId))?.id;
+  return pages[pages.length - 1]?.id;
+}
+
+function pageTitle(page: FormPage, index: number): string {
+  return page.title?.trim() || `Page ${index + 1}`;
+}
+
+function moveQuestion(schema: FormSchema, questionId: string, destPageId: string, destIndex?: number): FormSchema {
+  const n = normalizeFormSchema(schema);
+  const stripped = n.pages.map((p) => ({ ...p, questionIds: p.questionIds.filter((id) => id !== questionId) }));
+  const dest = stripped.find((p) => p.id === destPageId);
+  if (!dest) return n;
+  const at = destIndex === undefined ? dest.questionIds.length : Math.max(0, Math.min(destIndex, dest.questionIds.length));
+  dest.questionIds.splice(at, 0, questionId);
+  return normalizeFormSchema({ ...n, pages: stripped });
+}
+
 export function Builder(props: Props) {
   const [title, setTitle] = useState(props.title);
-  const [schema, setSchema] = useState<FormSchema>(props.schema);
+  const [schema, setSchema] = useState<FormSchema>(() => normalizeFormSchema(props.schema));
   const [published, setPublished] = useState(props.published);
   const [selected, setSelected] = useState<PlayerScreen>("welcome");
   const [err, setErr] = useState<string | null>(null);
-  const saved = useRef(JSON.stringify({ title: props.title, schema: props.schema }));
+  const saved = useRef(JSON.stringify({ title: props.title, schema: normalizeFormSchema(props.schema) }));
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
   const publishedIds = useMemo(
     () => new Set((props.publishedSchema?.questions ?? []).map((q) => q.id)),
@@ -56,6 +97,7 @@ export function Builder(props: Props) {
   );
   const diff = useMemo(() => unpublishedChanges(schema, props.publishedSchema), [schema, props.publishedSchema]);
   const canPublish = !published || diff.lines.length > 0;
+  const pages = schema.pages ?? [];
 
   useEffect(() => {
     const now = JSON.stringify({ title, schema });
@@ -78,9 +120,7 @@ export function Builder(props: Props) {
 
   function taken(exceptId?: string): Set<string> {
     return new Set(
-      schema.questions
-        .filter((q) => q.type !== "statement" && q.id !== exceptId)
-        .map((q) => q.slug),
+      schema.questions.filter((q) => q.type !== "statement" && q.id !== exceptId).map((q) => q.slug),
     );
   }
 
@@ -88,27 +128,67 @@ export function Builder(props: Props) {
     setSchema((s) => ({ ...s, questions: s.questions.map((q) => (q.id === id ? fn(q) : q)) }));
   }
 
+  function patchPage(id: string, fn: (p: FormPage) => FormPage) {
+    setSchema((s) => {
+      const n = normalizeFormSchema(s);
+      return { ...n, pages: n.pages.map((p) => (p.id === id ? fn(p) : p)) };
+    });
+  }
+
   function addQuestion(type: Question["type"]) {
     const q = newQuestion(type, taken());
-    setSchema((s) => ({ ...s, questions: [...s.questions, q] }));
+    setSchema((s) => {
+      const n = normalizeFormSchema(s);
+      const pid = targetPageId(n, selected);
+      const nextPages = n.pages.length
+        ? n.pages.map((p) => (p.id === pid ? { ...p, questionIds: [...p.questionIds, q.id] } : p))
+        : [newPage([q.id])];
+      if (pid && !nextPages.some((p) => p.id === pid)) nextPages.push(newPage([q.id]));
+      return normalizeFormSchema({ ...n, questions: [...n.questions, q], pages: nextPages });
+    });
     setSelected({ questionId: q.id });
+  }
+
+  function addPage() {
+    const page = newPage([]);
+    setSchema((s) => {
+      const n = normalizeFormSchema(s);
+      const pid = targetPageId(n, selected);
+      const idx = n.pages.findIndex((p) => p.id === pid);
+      const pages = [...n.pages];
+      pages.splice(idx >= 0 ? idx + 1 : pages.length, 0, page);
+      return { ...n, pages };
+    });
+    setSelected({ pageId: page.id });
   }
 
   function onDragEnd(e: DragEndEvent) {
     const { active, over } = e;
     if (!over || active.id === over.id) return;
+    const activeId = String(active.id);
+    const overId = String(over.id);
     setSchema((s) => {
-      const old = s.questions.findIndex((q) => q.id === active.id);
-      const next = s.questions.findIndex((q) => q.id === over.id);
-      if (old < 0 || next < 0) return s;
-      return { ...s, questions: arrayMove(s.questions, old, next) };
+      const n = normalizeFormSchema(s);
+      const from = n.pages.find((p) => p.questionIds.includes(activeId));
+      const toPageId = overId.startsWith("page:")
+        ? overId.slice(5)
+        : n.pages.find((p) => p.questionIds.includes(overId))?.id;
+      const to = n.pages.find((p) => p.id === toPageId);
+      if (!from || !to) return n;
+      if (from.id === to.id && !overId.startsWith("page:")) {
+        const ids = arrayMove(from.questionIds, from.questionIds.indexOf(activeId), from.questionIds.indexOf(overId));
+        return normalizeFormSchema({ ...n, pages: n.pages.map((p) => (p.id === from.id ? { ...p, questionIds: ids } : p)) });
+      }
+      const destIndex = overId.startsWith("page:") ? to.questionIds.filter((id) => id !== activeId).length : undefined;
+      const insertAt = destIndex ?? to.questionIds.filter((id) => id !== activeId).indexOf(overId);
+      return moveQuestion(n, activeId, to.id, insertAt < 0 ? to.questionIds.length : insertAt);
     });
   }
 
   async function persist() {
     await api("/api/forms/" + props.formId, {
       method: "PUT",
-      body: JSON.stringify({ title, schema }),
+      body: JSON.stringify({ title, schema: normalizeFormSchema(schema) }),
     });
     saved.current = JSON.stringify({ title, schema });
     props.onMeta({ title, published });
@@ -150,12 +230,10 @@ export function Builder(props: Props) {
     }
   }
 
-  const inspect =
-    selected === "welcome"
-      ? "welcome"
-      : selected === "ending"
-        ? "ending"
-        : schema.questions.find((q) => q.id === selected.questionId);
+  const inspectPage = isPageScreen(selected) ? pages.find((p) => p.id === selected.pageId) : undefined;
+  const inspectQuestion = isQuestionScreen(selected)
+    ? schema.questions.find((q) => q.id === selected.questionId)
+    : undefined;
 
   return (
     <div className="flex min-h-0 min-w-[56rem] flex-1 flex-col">
@@ -209,25 +287,42 @@ export function Builder(props: Props) {
               ) : null}
             </Button>
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-              <SortableContext items={schema.questions.map((q) => q.id)} strategy={verticalListSortingStrategy}>
-                {schema.questions.map((q) => (
-                  <SortRow
-                    key={q.id}
-                    q={q}
-                    mark={
-                      publishedIds.has(q.id)
-                        ? diff.questionIds.has(q.id)
-                          ? "Edited"
-                          : undefined
-                        : props.publishedSchema
-                          ? "New"
-                          : undefined
-                    }
-                    on={typeof selected === "object" && selected.questionId === q.id}
-                    onClick={() => setSelected({ questionId: q.id })}
-                  />
-                ))}
-              </SortableContext>
+              {pages.map((page, i) => (
+                <PageDrop key={page.id} id={"page:" + page.id}>
+                  <Button
+                    type="button"
+                    variant={isPageScreen(selected) && selected.pageId === page.id ? "secondary" : "ghost"}
+                    className="mt-1 w-full justify-start font-medium"
+                    onClick={() => setSelected({ pageId: page.id })}
+                  >
+                    {pageTitle(page, i)}
+                    {diff.pages && (page.title || page.description) ? (
+                      <Badge variant="secondary" className="ml-auto">
+                        Edited
+                      </Badge>
+                    ) : null}
+                  </Button>
+                  <SortableContext items={page.questionIds} strategy={verticalListSortingStrategy}>
+                    {questionsOnPage(schema, page).map((q) => (
+                      <SortRow
+                        key={q.id}
+                        q={q}
+                        mark={
+                          publishedIds.has(q.id)
+                            ? diff.questionIds.has(q.id)
+                              ? "Edited"
+                              : undefined
+                            : props.publishedSchema
+                              ? "New"
+                              : undefined
+                        }
+                        on={isQuestionScreen(selected) && selected.questionId === q.id}
+                        onClick={() => setSelected({ questionId: q.id })}
+                      />
+                    ))}
+                  </SortableContext>
+                </PageDrop>
+              ))}
             </DndContext>
             <Button
               type="button"
@@ -244,7 +339,10 @@ export function Builder(props: Props) {
             </Button>
           </div>
         </ScrollArea>
-        <div className="border-t p-3">
+        <div className="grid gap-2 border-t p-3">
+          <Button type="button" variant="outline" onClick={addPage}>
+            Add page
+          </Button>
           <Select onValueChange={(t) => addQuestion(t as Question["type"])}>
             <SelectTrigger className="w-full">
               <SelectValue placeholder="Add question" />
@@ -268,7 +366,7 @@ export function Builder(props: Props) {
             <Field label="Form title">
               <Input value={title} onChange={(e) => setTitle(e.target.value)} />
             </Field>
-            {inspect === "welcome" && (
+            {selected === "welcome" && (
               <>
                 <Field label="Headline">
                   <Input
@@ -293,7 +391,7 @@ export function Builder(props: Props) {
                 </Field>
               </>
             )}
-            {inspect === "ending" && (
+            {selected === "ending" && (
               <>
                 <Field label="Headline">
                   <Input
@@ -312,18 +410,55 @@ export function Builder(props: Props) {
                 </Field>
               </>
             )}
-            {inspect && inspect !== "welcome" && inspect !== "ending" && (
+            {inspectPage && (
+              <>
+                <Field label="Page title">
+                  <Input
+                    value={inspectPage.title ?? ""}
+                    placeholder={pageTitle(inspectPage, pages.indexOf(inspectPage))}
+                    onChange={(e) =>
+                      patchPage(inspectPage.id, (p) => ({ ...p, title: e.target.value || undefined }))
+                    }
+                  />
+                </Field>
+                <Field label="Page description">
+                  <Textarea
+                    rows={3}
+                    value={inspectPage.description ?? ""}
+                    onChange={(e) =>
+                      patchPage(inspectPage.id, (p) => ({ ...p, description: e.target.value || undefined }))
+                    }
+                  />
+                </Field>
+              </>
+            )}
+            {inspectQuestion && (
               <QuestionInspect
-                q={inspect}
-                lockedType={publishedIds.has(inspect.id)}
-                taken={taken(inspect.id)}
-                onChange={(fn) => patchQuestion(inspect.id, fn)}
-                onRetire={() => patchQuestion(inspect.id, (q) => ({ ...q, retired: !q.retired }))}
+                q={inspectQuestion}
+                lockedType={publishedIds.has(inspectQuestion.id)}
+                taken={taken(inspectQuestion.id)}
+                pages={pages}
+                currentPageId={targetPageId(schema, selected)}
+                onMovePage={(pageId) => {
+                  setSchema((s) => moveQuestion(s, inspectQuestion.id, pageId));
+                }}
+                onChange={(fn) => patchQuestion(inspectQuestion.id, fn)}
+                onRetire={() => patchQuestion(inspectQuestion.id, (q) => ({ ...q, retired: !q.retired }))}
                 onDelete={
-                  publishedIds.has(inspect.id)
+                  publishedIds.has(inspectQuestion.id)
                     ? undefined
                     : () => {
-                        setSchema((s) => ({ ...s, questions: s.questions.filter((x) => x.id !== inspect.id) }));
+                        setSchema((s) => {
+                          const n = normalizeFormSchema(s);
+                          return normalizeFormSchema({
+                            ...n,
+                            questions: n.questions.filter((x) => x.id !== inspectQuestion.id),
+                            pages: n.pages.map((p) => ({
+                              ...p,
+                              questionIds: p.questionIds.filter((id) => id !== inspectQuestion.id),
+                            })),
+                          });
+                        });
                         setSelected("welcome");
                       }
                 }
@@ -337,6 +472,15 @@ export function Builder(props: Props) {
   );
 }
 
+function PageDrop(props: { id: string; children: React.ReactNode }) {
+  const { setNodeRef } = useDroppable({ id: props.id });
+  return (
+    <div ref={setNodeRef} className="grid gap-1">
+      {props.children}
+    </div>
+  );
+}
+
 function SortRow(props: { q: Question; on: boolean; mark?: "New" | "Edited"; onClick: () => void }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: props.q.id });
   return (
@@ -344,7 +488,7 @@ function SortRow(props: { q: Question; on: boolean; mark?: "New" | "Edited"; onC
       ref={setNodeRef}
       type="button"
       variant={props.on ? "secondary" : "ghost"}
-      className="h-auto w-full justify-start py-2 text-left"
+      className="h-auto w-full justify-start py-2 pl-6 text-left"
       style={{ transform: CSS.Transform.toString(transform), transition }}
       onClick={props.onClick}
       {...attributes}
@@ -367,6 +511,9 @@ function QuestionInspect(props: {
   q: Question;
   lockedType: boolean;
   taken: Set<string>;
+  pages: FormPage[];
+  currentPageId?: string;
+  onMovePage: (pageId: string) => void;
   onChange: (fn: (q: Question) => Question) => void;
   onRetire: () => void;
   onDelete?: () => void;
@@ -377,6 +524,22 @@ function QuestionInspect(props: {
   }
   return (
     <>
+      {props.pages.length > 1 && props.currentPageId && (
+        <Field label="Page">
+          <Select value={props.currentPageId} onValueChange={props.onMovePage}>
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {props.pages.map((p, i) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {pageTitle(p, i)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+      )}
       <Field label="Title">
         <Input
           value={q.title}

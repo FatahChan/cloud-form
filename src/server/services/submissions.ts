@@ -1,6 +1,7 @@
 import {
   fileKindFor,
   liveQuestions,
+  normalizeFormSchema,
   normalizePhone,
   parseAnswers,
   type ColumnQuestion,
@@ -21,7 +22,7 @@ function fileQuestion(schema: FormSchema, questionId: string): Extract<Question,
 async function publishedForm(slug: string): Promise<{ row: FormRow; schema: FormSchema }> {
   const row = await env.DB.prepare("SELECT * FROM forms WHERE slug = ? AND published = 1").bind(slug).first<FormRow>();
   if (!row || !row.published_schema) throw new HttpError("Not found", 404);
-  return { row, schema: JSON.parse(row.published_schema) as FormSchema };
+  return { row, schema: normalizeFormSchema(JSON.parse(row.published_schema) as FormSchema) };
 }
 
 export async function getPublicForm(slug: string) {

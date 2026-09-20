@@ -108,6 +108,13 @@ describe("form flow", () => {
         { type: "short_text", id: EXTRA_ID, slug: "company", title: "Company", required: false },
         { type: "phone", id: PHONE_ID, slug: "phone", title: "Phone", required: false },
       ],
+      pages: [
+        {
+          id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          title: "Apply",
+          questionIds: [EMAIL_ID, FILE_ID, EXTRA_ID, PHONE_ID],
+        },
+      ],
     };
     await forms.updateForm(user, form.id, { title: "Job", schema: withExtra });
     const inboxDraft = await submissions.listInbox(form.id);
