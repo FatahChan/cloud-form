@@ -1,10 +1,12 @@
 import { useMemo } from "react";
 import { Link } from "@tanstack/react-router";
+import { PageMeta } from "@/components/page-meta";
 import { SiteHeader } from "@/components/site-header";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { FormPlayer } from "~/player/FormPlayer";
 import { getFormTemplate } from "~/shared/form-templates";
+import { exampleDescription, exampleTitle } from "~/shared/seo";
 
 export function ExamplePage({ slug, showAdmin = false }: { slug: string; showAdmin?: boolean }) {
   const template = getFormTemplate(slug);
@@ -30,6 +32,9 @@ export function ExamplePage({ slug, showAdmin = false }: { slug: string; showAdm
 
   return (
     <div className="flex h-svh flex-col bg-background">
+      {!showAdmin && (
+        <PageMeta title={exampleTitle(template.name)} description={exampleDescription(template.name, template.description)} />
+      )}
       <SiteHeader showAdmin={showAdmin} />
       <div className="flex items-center justify-between gap-3 border-b px-4 py-2">
         <div className="min-w-0">

@@ -1,25 +1,28 @@
 import { Link } from "@tanstack/react-router";
+import { PageMeta } from "@/components/page-meta";
 import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { FORM_TEMPLATES } from "~/shared/form-templates";
+import { FAQS, REPO_URL, SITE_DESCRIPTION, SITE_TITLE } from "~/shared/seo";
 
 const DEPLOY = "https://deploy.workers.cloudflare.com/?url=https://github.com/FatahChan/cloud-form";
-const REPO = "https://github.com/FatahChan/cloud-form";
 
 export function LandingPage({ showAdmin = false }: { showAdmin?: boolean }) {
   return (
     <div className="min-h-svh bg-background">
+      {!showAdmin && <PageMeta title={SITE_TITLE} description={SITE_DESCRIPTION} />}
       <SiteHeader showAdmin={showAdmin} />
       <main>
         <section className="mx-auto max-w-6xl px-4 py-16 sm:py-20">
-          <p className="text-sm text-muted-foreground">Open source · Cloudflare Workers</p>
+          <p className="text-sm text-muted-foreground">Open source Typeform alternative · Cloudflare Workers</p>
           <h1 className="mt-3 max-w-3xl font-heading text-4xl font-medium tracking-tight sm:text-5xl">
             Forms that feel like Typeform, deploy like a single Worker.
           </h1>
           <p className="mt-4 max-w-2xl text-muted-foreground">
-            Branching multi-page flows, starter templates, searchable inbox, and file uploads — one Worker, D1, and R2.
-            Try the templates below in this browser; nothing is saved.
+            A free, self-hosted form builder for contact forms, surveys, job applications, and quizzes. Branching
+            multi-page flows, starter templates, searchable inbox, and file uploads — one Worker, your D1 and R2. Try
+            the templates below in this browser; nothing is saved.
           </p>
           <div className="mt-6 flex flex-wrap items-center gap-3">
             <Button size="lg" asChild>
@@ -34,16 +37,17 @@ export function LandingPage({ showAdmin = false }: { showAdmin?: boolean }) {
               />
             </a>
             <Button variant="outline" size="lg" asChild>
-              <a href={`${REPO}#run`}>Manual install</a>
+              <a href={`${REPO_URL}#run`}>Manual install</a>
             </Button>
           </div>
         </section>
 
         <section id="examples" className="border-y bg-muted/30">
           <div className="mx-auto max-w-6xl px-4 py-16">
-            <h2 className="font-heading text-2xl font-medium tracking-tight">Try a template</h2>
+            <h2 className="font-heading text-2xl font-medium tracking-tight">Try a form template</h2>
             <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-              Each example is a real schema rendered by the same player as a live form. Answers stay in this tab.
+              Contact forms, surveys, job applications, event RSVPs, and more — the same kinds of forms people build in
+              Typeform or Google Forms. Each example uses the live player. Answers stay in this tab.
             </p>
             <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {FORM_TEMPLATES.map((template) => (
@@ -89,7 +93,54 @@ export function LandingPage({ showAdmin = false }: { showAdmin?: boolean }) {
           </div>
         </section>
 
-        <section className="border-t bg-muted/30">
+        <section id="compare" className="border-t">
+          <div className="mx-auto max-w-6xl px-4 py-16">
+            <h2 className="font-heading text-2xl font-medium tracking-tight">Typeform, Google Forms, or Cloud Form</h2>
+            <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+              Cloud Form is for teams who want conversational forms without Typeform pricing, Google Forms' spreadsheet
+              look, or storing answers on someone else's servers.
+            </p>
+            <div className="mt-8 grid gap-4 sm:grid-cols-3">
+              <article className="rounded-xl bg-card p-5 ring-1 ring-foreground/10">
+                <h3 className="font-heading text-base font-medium">Typeform</h3>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Polished hosted product. You pay per response, and data lives in Typeform's cloud.
+                </p>
+              </article>
+              <article className="rounded-xl bg-card p-5 ring-1 ring-foreground/10">
+                <h3 className="font-heading text-base font-medium">Google Forms</h3>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Free and familiar. Layout is a list of fields, and responses go to Google.
+                </p>
+              </article>
+              <article className="rounded-xl bg-card p-5 ring-1 ring-foreground/10">
+                <h3 className="font-heading text-base font-medium">Cloud Form</h3>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Typeform-style player you host. Open source, no per-response fee. Answers stay in your D1 and R2.
+                </p>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section id="faq" className="border-t bg-muted/30">
+          <div className="mx-auto max-w-6xl px-4 py-16">
+            <h2 className="font-heading text-2xl font-medium tracking-tight">FAQ</h2>
+            <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+              Open source form builder questions — Typeform alternatives, Google Forms, hosting, and pricing.
+            </p>
+            <div className="mt-8 grid gap-3">
+              {FAQS.map((item) => (
+                <details key={item.q} className="rounded-xl bg-card p-5 ring-1 ring-foreground/10">
+                  <summary className="cursor-pointer font-heading text-base font-medium">{item.q}</summary>
+                  <p className="mt-2 text-sm text-muted-foreground">{item.a}</p>
+                </details>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="border-t">
           <div className="mx-auto max-w-6xl px-4 py-16">
             <h2 className="font-heading text-2xl font-medium tracking-tight">Get started</h2>
             <ol className="mt-6 grid gap-4 sm:grid-cols-2">
@@ -127,8 +178,8 @@ export function LandingPage({ showAdmin = false }: { showAdmin?: boolean }) {
       </main>
       <footer className="border-t">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-6 text-sm text-muted-foreground">
-          <span>Cloud Form — open source. Deploy your own instance on Cloudflare.</span>
-          <a className="underline" href={REPO}>
+          <span>Cloud Form — open source Typeform alternative. Deploy your own instance on Cloudflare.</span>
+          <a className="underline" href={REPO_URL}>
             github.com/FatahChan/cloud-form
           </a>
         </div>

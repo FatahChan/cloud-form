@@ -8,6 +8,9 @@ import { CloudFormLogoLink } from "@/components/logo";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/admin")({
+  head: () => ({
+    meta: [{ name: "robots", content: "noindex, nofollow" }],
+  }),
   component: AdminLayout,
 });
 

@@ -13,9 +13,15 @@ export function SiteHeader({ showAdmin = false }: { showAdmin?: boolean }) {
         <Link to="/" hash="examples" className="hidden h-14 items-center text-sm text-muted-foreground hover:text-foreground sm:inline-flex">
           Examples
         </Link>
+        <Link to="/" hash="compare" className="hidden h-14 items-center text-sm text-muted-foreground hover:text-foreground md:inline-flex">
+          Compare
+        </Link>
+        <Link to="/" hash="faq" className="hidden h-14 items-center text-sm text-muted-foreground hover:text-foreground sm:inline-flex">
+          FAQ
+        </Link>
         <a
           href="https://github.com/FatahChan/cloud-form"
-          className="hidden h-14 items-center text-sm text-muted-foreground hover:text-foreground sm:inline-flex"
+          className="hidden h-14 items-center text-sm text-muted-foreground hover:text-foreground lg:inline-flex"
         >
           GitHub
         </a>
