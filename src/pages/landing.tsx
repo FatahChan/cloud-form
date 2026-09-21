@@ -4,15 +4,16 @@ import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { FORM_TEMPLATES } from "~/shared/form-templates";
-import { FAQS, REPO_URL, SITE_DESCRIPTION, SITE_TITLE } from "~/shared/seo";
+import { FAQS, homepageJsonLd, REPO_URL, SITE_DESCRIPTION, SITE_TITLE } from "~/shared/seo";
 
 const DEPLOY = "https://deploy.workers.cloudflare.com/?url=https://github.com/FatahChan/cloud-form";
 
-export function LandingPage({ showAdmin = false }: { showAdmin?: boolean }) {
+export function LandingPage() {
   return (
     <div className="min-h-svh bg-background">
-      {!showAdmin && <PageMeta title={SITE_TITLE} description={SITE_DESCRIPTION} />}
-      <SiteHeader showAdmin={showAdmin} />
+      <PageMeta title={SITE_TITLE} description={SITE_DESCRIPTION} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(homepageJsonLd()) }} />
+      <SiteHeader />
       <main>
         <section className="mx-auto max-w-6xl px-4 py-16 sm:py-20">
           <p className="text-sm text-muted-foreground">Open source Typeform alternative · Cloudflare Workers</p>

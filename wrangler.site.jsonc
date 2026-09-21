@@ -1,0 +1,15 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "cloud-form-site",
+	"compatibility_date": "2026-08-22",
+	"assets": {
+		"directory": "./dist-site",
+		"not_found_handling": "single-page-application"
+	},
+	"routes": [
+		{
+			"pattern": "cloudform.fatahchan.dev",
+			"custom_domain": true
+		}
+	]
+}

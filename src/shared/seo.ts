@@ -1,5 +1,6 @@
-/** Canonical marketing site (GitHub Pages). Worker instances should noindex their copy of this landing. */
-export const SITE_URL = "https://fatahchan.github.io/cloud-form";
+/** Official marketing site (landing + example players). The Worker app does not serve this. */
+export const SITE_HOST = "cloudform.fatahchan.dev";
+export const SITE_URL = `https://${SITE_HOST}`;
 export const SITE_NAME = "Cloud Form";
 export const SITE_TITLE = "Cloud Form — Open source Typeform alternative";
 export const SITE_DESCRIPTION =

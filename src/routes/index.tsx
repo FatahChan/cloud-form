@@ -1,10 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { LandingPage } from "@/pages/landing";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/")({
-  // Marketing copy is indexed on GitHub Pages; Worker landings are duplicates.
-  head: () => ({
-    meta: [{ name: "robots", content: "noindex, nofollow" }],
-  }),
-  component: () => <LandingPage showAdmin />,
+  beforeLoad: () => {
+    throw redirect({ to: "/admin" });
+  },
+  component: () => null,
 });
