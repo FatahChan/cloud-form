@@ -85,7 +85,8 @@ describe("form flow", () => {
       created_by_name: "Owner",
       updated_by_name: "Owner",
     });
-    const table = tableName(form.id);
+    const table = tableName(form.id, "Job");
+    expect(table).toMatch(/^f_job_[0-9a-f]{8}$/);
 
     const afterCreate = await auth.listAudit(50);
     expect((afterCreate.events as { action: string; entity: string; entity_id: string }[])[0]).toMatchObject({

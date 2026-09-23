@@ -10,7 +10,7 @@ import {
 import { parseAnswers } from "../../shared/answers";
 import { HttpError } from "../errors";
 import { copyPending, putPending } from "../files";
-import { columnName, tableName } from "../formTable";
+import { columnName, submissionsTableFromRow } from "../formTable";
 import { parseStored, type FormRow } from "./forms";
 import { env } from "../http";
 
@@ -55,7 +55,7 @@ export async function submitPublic(slug: string, answers: unknown) {
   if (!parsed.ok) throw new HttpError(parsed.error, 400);
 
   const submissionId = crypto.randomUUID();
-  const table = tableName(row.id);
+  const table = submissionsTableFromRow(row);
   const cols: ColumnQuestion[] = schema.questions.filter((q): q is ColumnQuestion => q.type !== "statement");
 
   const destKeys: {
@@ -178,7 +178,7 @@ export async function listInbox(formId: string, filter?: InboxListFilter) {
   const row = await env.DB.prepare("SELECT * FROM forms WHERE id = ?").bind(formId).first<FormRow>();
   if (!row) throw new HttpError("Not found", 404);
   const { schema } = parseStored(row);
-  const table = tableName(formId);
+  const table = submissionsTableFromRow(row);
   const empty = {
     schema,
     submissions: [] as InboxRow[],
@@ -225,7 +225,7 @@ export async function getSubmission(formId: string, sid: string) {
   const row = await env.DB.prepare("SELECT * FROM forms WHERE id = ?").bind(formId).first<FormRow>();
   if (!row) throw new HttpError("Not found", 404);
   const { schema } = parseStored(row);
-  const table = tableName(formId);
+  const table = submissionsTableFromRow(row);
   const sub = await env.DB.prepare(`SELECT * FROM ${table} WHERE id = ?`).bind(sid).first();
   if (!sub) throw new HttpError("Not found", 404);
   const { results: files } = await env.DB.prepare("SELECT * FROM files WHERE submission_id = ?").bind(sid).all();

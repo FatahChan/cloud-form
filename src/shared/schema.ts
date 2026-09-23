@@ -51,9 +51,31 @@ const textLike = z.object({
   placeholder: z.string().max(80).optional(),
 });
 
+const shortTextRegexSchema = z
+  .string()
+  .max(200)
+  .optional()
+  .refine((s) => {
+    if (!s) return true;
+    try {
+      new RegExp(s);
+      return true;
+    } catch {
+      return false;
+    }
+  }, "Invalid regular expression");
+
+export function shortTextMatchesRegex(pattern: string, value: string): boolean {
+  try {
+    return new RegExp(pattern).test(value);
+  } catch {
+    return false;
+  }
+}
+
 export const questionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("statement"), ...baseQ }),
-  textLike.extend({ type: z.literal("short_text") }),
+  textLike.extend({ type: z.literal("short_text"), regex: shortTextRegexSchema }),
   textLike.extend({ type: z.literal("long_text") }),
   textLike.extend({ type: z.literal("email") }),
   textLike.extend({ type: z.literal("phone") }),

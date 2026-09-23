@@ -1,6 +1,12 @@
 import { z } from "zod";
 import { questionsOnPath } from "./flow";
-import { liveQuestions, normalizePhone, type Answers, type FormSchema } from "./schema";
+import {
+  liveQuestions,
+  normalizePhone,
+  shortTextMatchesRegex,
+  type Answers,
+  type FormSchema,
+} from "./schema";
 
 export function parseAnswers(
   schema: FormSchema,
@@ -18,7 +24,16 @@ export function parseAnswers(
       continue;
     }
     switch (q.type) {
-      case "short_text":
+      case "short_text": {
+        if (typeof v !== "string") return { ok: false, error: `${q.title} must be text` };
+        const t = v.trim();
+        if (!t) break;
+        if (q.regex && !shortTextMatchesRegex(q.regex, t)) {
+          return { ok: false, error: `${q.title} does not match the required format` };
+        }
+        out[q.id] = t;
+        break;
+      }
       case "long_text": {
         if (typeof v !== "string") return { ok: false, error: `${q.title} must be text` };
         const t = v.trim();

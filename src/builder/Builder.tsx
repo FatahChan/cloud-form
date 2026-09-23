@@ -1,9 +1,10 @@
-import { DndContext, PointerSensor, closestCenter, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import { toast } from "sonner";
-import { LockIcon } from "lucide-react";
+import { GripVertical, LockIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Field } from "@/components/field";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -190,6 +191,17 @@ export function Builder(props: Props) {
     if (!over || active.id === over.id) return;
     const activeId = String(active.id);
     const overId = String(over.id);
+    if (activeId.startsWith("page:") && overId.startsWith("page:")) {
+      setSchema((s) => {
+        const n = normalizeFormSchema(s);
+        const fromIdx = n.pages.findIndex((p) => `page:${p.id}` === activeId);
+        const toIdx = n.pages.findIndex((p) => `page:${p.id}` === overId);
+        if (fromIdx < 0 || toIdx < 0) return n;
+        return normalizeFormSchema({ ...n, pages: arrayMove(n.pages, fromIdx, toIdx) });
+      });
+      return;
+    }
+    if (activeId.startsWith("page:")) return;
     setSchema((s) => {
       const n = normalizeFormSchema(s);
       const from = n.pages.find((p) => p.questionIds.includes(activeId));
@@ -260,7 +272,7 @@ export function Builder(props: Props) {
     : undefined;
 
   return (
-    <div className="flex min-h-0 min-w-[56rem] flex-1 flex-col">
+    <div className="flex min-h-0 min-w-[56rem] flex-1 flex-col overflow-hidden">
       <div className="flex items-center gap-3 border-b px-4 py-3">
         <Input
           aria-label="Form title"
@@ -324,9 +336,10 @@ export function Builder(props: Props) {
           </Button>
         </div>
       </div>
-      <div className="grid min-h-0 min-w-0 flex-1 grid-cols-[16rem_minmax(0,1fr)_18rem] overflow-x-auto">
-      <aside className="flex min-h-0 flex-col border-r bg-card">
-        <ScrollArea className="flex-1">
+      <div className="grid h-0 min-h-0 min-w-0 flex-1 grid-cols-[16rem_minmax(0,1fr)_18rem] grid-rows-1 overflow-x-auto overflow-y-hidden">
+      <aside className="flex min-h-0 flex-col overflow-hidden border-r bg-card self-start">
+        {/* ponytail: 16rem reserves admin chrome + pinned add-page footer; upgrade path: CSS var from layout */}
+        <div className="max-h-[calc(100dvh-16rem)] min-h-0 overflow-y-auto overscroll-y-contain">
           <div className="grid gap-1 p-3">
             <Button
               type="button"
@@ -342,42 +355,41 @@ export function Builder(props: Props) {
               ) : null}
             </Button>
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-              {pages.map((page, i) => (
-                <PageDrop key={page.id} id={"page:" + page.id}>
-                  <Button
-                    type="button"
-                    variant={isPageScreen(selected) && selected.pageId === page.id ? "secondary" : "ghost"}
-                    className="mt-1 w-full justify-start font-medium"
-                    onClick={() => setSelected({ pageId: page.id })}
+              <SortableContext
+                items={pages.map((p) => `page:${p.id}`)}
+                strategy={verticalListSortingStrategy}
+              >
+                {pages.map((page, i) => (
+                  <PageRow
+                    key={page.id}
+                    page={page}
+                    index={i}
+                    selected={isPageScreen(selected) && selected.pageId === page.id}
+                    edited={diff.pages && Boolean(page.title || page.description)}
+                    onSelect={() => setSelected({ pageId: page.id })}
                   >
-                    {pageTitle(page, i)}
-                    {diff.pages && (page.title || page.description) ? (
-                      <Badge variant="secondary" className="ml-auto">
-                        Edited
-                      </Badge>
-                    ) : null}
-                  </Button>
-                  <SortableContext items={page.questionIds} strategy={verticalListSortingStrategy}>
-                    {questionsOnPage(schema, page).map((q) => (
-                      <SortRow
-                        key={q.id}
-                        q={q}
-                        mark={
-                          publishedIds.has(q.id)
-                            ? diff.questionIds.has(q.id)
-                              ? "Edited"
-                              : undefined
-                            : props.publishedSchema
-                              ? "New"
-                              : undefined
-                        }
-                        on={isQuestionScreen(selected) && selected.questionId === q.id}
-                        onClick={() => setSelected({ questionId: q.id })}
-                      />
-                    ))}
-                  </SortableContext>
-                </PageDrop>
-              ))}
+                    <SortableContext items={page.questionIds} strategy={verticalListSortingStrategy}>
+                      {questionsOnPage(schema, page).map((q) => (
+                        <SortRow
+                          key={q.id}
+                          q={q}
+                          mark={
+                            publishedIds.has(q.id)
+                              ? diff.questionIds.has(q.id)
+                                ? "Edited"
+                                : undefined
+                              : props.publishedSchema
+                                ? "New"
+                                : undefined
+                          }
+                          on={isQuestionScreen(selected) && selected.questionId === q.id}
+                          onClick={() => setSelected({ questionId: q.id })}
+                        />
+                      ))}
+                    </SortableContext>
+                  </PageRow>
+                ))}
+              </SortableContext>
             </DndContext>
             <Button
               type="button"
@@ -393,8 +405,8 @@ export function Builder(props: Props) {
               ) : null}
             </Button>
           </div>
-        </ScrollArea>
-        <div className="grid gap-2 border-t p-3">
+        </div>
+        <div className="grid shrink-0 gap-2 border-t bg-card p-3">
           <Button type="button" variant="outline" onClick={addPage}>
             Add page
           </Button>
@@ -412,15 +424,15 @@ export function Builder(props: Props) {
           </Select>
         </div>
       </aside>
-      <div className="h-full min-h-[50vh] bg-muted/30">
+      <div className="h-full min-h-0 overflow-hidden bg-muted/30">
         {view === "flow" ? (
           <FlowMap schema={schema} selected={selected} onSelect={setSelected} onChange={setSchema} />
         ) : (
           <FormPlayer mode="preview" schema={schema} screen={selected} />
         )}
       </div>
-      <aside className="min-h-0 border-l bg-card">
-        <ScrollArea className="h-full">
+      <aside className="flex min-h-0 flex-col overflow-hidden border-l bg-card">
+        <ScrollArea className="min-h-0 flex-1">
           <div className="grid gap-4 p-4">
             {selected === "welcome" && (
               <>
@@ -534,38 +546,86 @@ export function Builder(props: Props) {
   );
 }
 
-function PageDrop(props: { id: string; children: React.ReactNode }) {
-  const { setNodeRef } = useDroppable({ id: props.id });
+function DragHandle(props: { label: string } & ComponentProps<"button">) {
+  const { label, className, ...rest } = props;
   return (
-    <div ref={setNodeRef} className="grid gap-1">
-      {props.children}
+    <button
+      type="button"
+      className={cn(
+        "flex shrink-0 touch-none cursor-grab items-center justify-center rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground active:cursor-grabbing",
+        className,
+      )}
+      aria-label={label}
+      {...rest}
+    >
+      <GripVertical className="size-3.5" />
+    </button>
+  );
+}
+
+function PageRow(props: {
+  page: FormPage;
+  index: number;
+  selected: boolean;
+  edited?: boolean;
+  onSelect: () => void;
+  children: React.ReactNode;
+}) {
+  const sortableId = `page:${props.page.id}`;
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: sortableId });
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn("grid gap-1", isDragging && "opacity-60")}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+    >
+      <div className="mt-1 flex min-w-0 items-center gap-0.5">
+        <DragHandle label="Drag to reorder page" {...attributes} {...listeners} />
+        <Button
+          type="button"
+          variant={props.selected ? "secondary" : "ghost"}
+          className="h-auto min-w-0 flex-1 justify-start py-2 font-medium"
+          onClick={props.onSelect}
+        >
+          <span className="min-w-0 flex-1 truncate text-left">{pageTitle(props.page, props.index)}</span>
+          {props.edited ? (
+            <Badge variant="secondary" className="ml-2 shrink-0">
+              Edited
+            </Badge>
+          ) : null}
+        </Button>
+      </div>
+      <div className="pl-2">{props.children}</div>
     </div>
   );
 }
 
 function SortRow(props: { q: Question; on: boolean; mark?: "New" | "Edited"; onClick: () => void }) {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: props.q.id });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: props.q.id });
   return (
-    <Button
+    <div
       ref={setNodeRef}
-      type="button"
-      variant={props.on ? "secondary" : "ghost"}
-      className="h-auto w-full justify-start py-2 pl-6 text-left"
+      className={cn("flex min-w-0 items-center gap-0.5", isDragging && "opacity-60")}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      onClick={props.onClick}
-      {...attributes}
-      {...listeners}
     >
-      <span className="min-w-0 flex-1 truncate">
-        {props.q.retired ? <Badge variant="outline" className="mr-2">Retired</Badge> : null}
-        {props.q.title.trim() || "Untitled"}
-      </span>
-      {props.mark ? (
-        <Badge variant="secondary" className="ml-2 shrink-0">
-          {props.mark}
-        </Badge>
-      ) : null}
-    </Button>
+      <DragHandle label="Drag to reorder question" {...attributes} {...listeners} />
+      <Button
+        type="button"
+        variant={props.on ? "secondary" : "ghost"}
+        className="h-auto min-w-0 flex-1 justify-start py-2 text-left"
+        onClick={props.onClick}
+      >
+        <span className="min-w-0 flex-1 truncate">
+          {props.q.retired ? <Badge variant="outline" className="mr-2">Retired</Badge> : null}
+          {props.q.title.trim() || "Untitled"}
+        </span>
+        {props.mark ? (
+          <Badge variant="secondary" className="ml-2 shrink-0">
+            {props.mark}
+          </Badge>
+        ) : null}
+      </Button>
+    </div>
   );
 }
 
@@ -689,6 +749,18 @@ function QuestionInspect(props: {
           />
         </Field>
       )}
+      {q.type === "short_text" && (
+        <Field label="Validation regex" hint="Optional. Answers must match this pattern (JavaScript RegExp syntax).">
+          <Input
+            value={q.regex ?? ""}
+            onChange={(e) =>
+              props.onChange((prev) =>
+                prev.type === "short_text" ? { ...prev, regex: e.target.value || undefined } : prev,
+              )
+            }
+          />
+        </Field>
+      )}
       {q.type === "number" && (
         <>
           <Field label="Min">
@@ -767,12 +839,17 @@ function QuestionInspect(props: {
         </>
       )}
       <div className="flex flex-wrap gap-2">
-        <Button type="button" variant="outline" onClick={props.onRetire}>
-          {q.retired ? "Unretire" : "Retire"}
-        </Button>
-        {props.onDelete && (
+        {props.onDelete ? (
           <Button type="button" variant="destructive" onClick={props.onDelete}>
             Delete
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            variant={q.retired ? "outline" : "destructive"}
+            onClick={props.onRetire}
+          >
+            {q.retired ? "Unretire" : "Retire"}
           </Button>
         )}
       </div>

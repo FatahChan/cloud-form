@@ -8,7 +8,7 @@ import {
 } from "../../shared/schema";
 import { insertAudit } from "../audit";
 import { HttpError } from "../errors";
-import { diffAndMigrate, tableName } from "../formTable";
+import { diffAndMigrate, submissionsTableFromRow, tableName } from "../formTable";
 import { env } from "../http";
 import { formPublicSlug, type SessionUser } from "../session";
 
@@ -21,6 +21,7 @@ export type FormRow = {
   published_schema: string | null;
   created_by: string;
   updated_by: string | null;
+  submissions_table: string | null;
   created_at: number;
   updated_at: number;
 };
@@ -69,10 +70,11 @@ export async function createForm(user: SessionUser, input?: { title?: string; sc
     schema = defaultFormSchema();
   }
   const now = Date.now();
+  const submissionsTable = tableName(id, t);
   await env.DB.prepare(
-    "INSERT INTO forms (id, slug, title, published, schema, published_schema, created_by, updated_by, created_at, updated_at) VALUES (?, ?, ?, 0, ?, NULL, ?, ?, ?, ?)",
+    "INSERT INTO forms (id, slug, title, published, schema, published_schema, created_by, updated_by, submissions_table, created_at, updated_at) VALUES (?, ?, ?, 0, ?, NULL, ?, ?, ?, ?, ?)",
   )
-    .bind(id, slug, t, JSON.stringify(schema), user.id, user.id, now, now)
+    .bind(id, slug, t, JSON.stringify(schema), user.id, user.id, submissionsTable, now, now)
     .run();
   await insertAudit({ actorId: user.id, action: "form.create", entityType: "form", entityId: id });
   return { id, slug, title: t, published: 0, schema };
@@ -102,17 +104,20 @@ export async function updateForm(user: SessionUser, id: string, input: { title?:
   const { schema: prev, published } = parseStored(row);
   const editErr = schemaEditError(prev, parsed.data, published);
   if (editErr) throw new HttpError(editErr, 400);
-  await env.DB.prepare("UPDATE forms SET title = ?, schema = ?, updated_at = ?, updated_by = ? WHERE id = ?")
-    .bind(title, JSON.stringify(parsed.data), Date.now(), user.id, id)
+  const submissionsTable = row.published ? row.submissions_table : tableName(id, title);
+  await env.DB.prepare(
+    "UPDATE forms SET title = ?, schema = ?, submissions_table = ?, updated_at = ?, updated_by = ? WHERE id = ?",
+  )
+    .bind(title, JSON.stringify(parsed.data), submissionsTable, Date.now(), user.id, id)
     .run();
   await insertAudit({ actorId: user.id, action: "form.update", entityType: "form", entityId: id });
   return { ok: true };
 }
 
 export async function deleteForm(user: SessionUser, id: string) {
-  const row = await env.DB.prepare("SELECT id FROM forms WHERE id = ?").bind(id).first();
+  const row = await env.DB.prepare("SELECT * FROM forms WHERE id = ?").bind(id).first<FormRow>();
   if (!row) throw new HttpError("Not found", 404);
-  const table = tableName(id);
+  const table = submissionsTableFromRow(row);
   const { results: subs } = await env.DB.prepare("SELECT id FROM submissions WHERE form_id = ?").bind(id).all<{
     id: string;
   }>();
@@ -142,7 +147,13 @@ export async function publishForm(user: SessionUser, id: string, published: bool
   if (published) {
     const pubErr = publishSchemaError(schema);
     if (pubErr) throw new HttpError(pubErr, 400);
-    await diffAndMigrate({ formId: id, next: schema, published: prevPublished, actorId: user.id });
+    await diffAndMigrate({
+      formId: id,
+      table: submissionsTableFromRow(row),
+      next: schema,
+      published: prevPublished,
+      actorId: user.id,
+    });
     await env.DB.prepare("UPDATE forms SET published = 1, published_schema = ?, updated_at = ?, updated_by = ? WHERE id = ?")
       .bind(JSON.stringify(schema), Date.now(), user.id, id)
       .run();

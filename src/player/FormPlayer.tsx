@@ -15,6 +15,7 @@ import {
   livePages,
   normalizePhone,
   questionsOnPage,
+  shortTextMatchesRegex,
   type FileKind,
   type FormPage,
   type FormSchema,
@@ -97,8 +98,17 @@ export function FormPlayer({ schema, mode, slug, screen }: Props) {
   const validate = (question: Question): string | null => {
     if (question.type === "statement") return null;
     if (question.type === "file" && mode === "preview") return null;
-    if (!("required" in question) || !question.required) return null;
     const v = answers[question.id];
+    if (
+      question.type === "short_text" &&
+      question.regex &&
+      typeof v === "string" &&
+      v.trim() &&
+      !shortTextMatchesRegex(question.regex, v.trim())
+    ) {
+      return "Does not match the required format";
+    }
+    if (!("required" in question) || !question.required) return null;
     if (v === undefined || v === null || v === "") return "This question is required";
     if (question.type === "multi_select" && Array.isArray(v) && v.length === 0) return "This question is required";
     if (question.type === "email" && typeof v === "string") {
