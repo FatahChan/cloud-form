@@ -3,16 +3,29 @@ import {
   liveQuestions,
   normalizeFormSchema,
   normalizePhone,
+  type Answers,
   type ColumnQuestion,
   type FormSchema,
   type Question,
 } from "../../shared/schema";
 import { parseAnswers } from "../../shared/answers";
+import {
+  analyzeImport,
+  importFields,
+  importDataRowNumber,
+  isHttpsFileUrl,
+  prepareImportRow,
+  type ColumnMapping,
+  type ImportAnalysis,
+} from "../../shared/import";
+import { insertAudit } from "../audit";
 import { HttpError } from "../errors";
 import { copyPending, putPending } from "../files";
 import { columnName, submissionsTableFromRow } from "../formTable";
+import { fetchImportFile, type ImportedFile } from "../importFetch";
 import { parseStored, type FormRow } from "./forms";
 import { env } from "../http";
+import type { SessionUser } from "../session";
 
 function fileQuestion(schema: FormSchema, questionId: string): Extract<Question, { type: "file" }> | null {
   const q = liveQuestions(schema).find((x) => x.id === questionId);
@@ -49,23 +62,50 @@ export async function uploadPublicFile(slug: string, file: File, questionId: str
   return { uploadId };
 }
 
+async function insertParsedSubmission(
+  submissionId: string,
+  row: FormRow,
+  schema: FormSchema,
+  parsed: Answers,
+  files: ImportedFile[],
+): Promise<void> {
+  const table = submissionsTableFromRow(row);
+  const cols: ColumnQuestion[] = schema.questions.filter((q): q is ColumnQuestion => q.type !== "statement");
+  const colSql = cols.map((q) => `"${columnName(q.slug)}"`).join(", ");
+  const placeholders = cols.map(() => "?").join(", ");
+  const values = cols.map((q) => {
+    const v = parsed[q.id];
+    if (v === undefined) return null;
+    if (q.type === "file") return (v as { uploadId: string }).uploadId;
+    if (q.type === "multi_select") return JSON.stringify(v);
+    return v as string | number;
+  });
+  const now = Date.now();
+  const stmts = [
+    env.DB.prepare("INSERT INTO submissions (id, form_id, created_at) VALUES (?, ?, ?)").bind(submissionId, row.id, now),
+    env.DB.prepare(
+      `INSERT INTO ${table} (id, created_at${colSql ? ", " + colSql : ""}) VALUES (?, ?${cols.length ? ", " + placeholders : ""})`,
+    ).bind(submissionId, now, ...values),
+  ];
+  for (const d of files) {
+    stmts.push(
+      env.DB.prepare(
+        "INSERT INTO files (id, submission_id, question_id, upload_id, r2_key, filename, content_type, size) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      ).bind(crypto.randomUUID(), submissionId, d.q.id, d.uploadId, d.dest, d.filename, d.contentType, d.size),
+    );
+  }
+  await env.DB.batch(stmts);
+}
+
 export async function submitPublic(slug: string, answers: unknown) {
   const { row, schema } = await publishedForm(slug);
   const parsed = parseAnswers(schema, answers);
   if (!parsed.ok) throw new HttpError(parsed.error, 400);
 
   const submissionId = crypto.randomUUID();
-  const table = submissionsTableFromRow(row);
-  const cols: ColumnQuestion[] = schema.questions.filter((q): q is ColumnQuestion => q.type !== "statement");
-
-  const destKeys: {
-    q: Extract<Question, { type: "file" }>;
-    uploadId: string;
-    pending: string;
-    dest: string;
-    obj: R2ObjectBody;
-  }[] = [];
-  for (const q of cols) {
+  const files: ImportedFile[] = [];
+  const pendingKeys: string[] = [];
+  for (const q of importFields(schema)) {
     if (q.type !== "file") continue;
     const ans = parsed.data[q.id] as { uploadId: string } | undefined;
     if (!ans) continue;
@@ -73,48 +113,63 @@ export async function submitPublic(slug: string, answers: unknown) {
     const dest = `submissions/${submissionId}/${ans.uploadId}`;
     const obj = await copyPending(pending, dest);
     if (!obj) throw new HttpError("Missing upload", 400);
-    destKeys.push({ q, uploadId: ans.uploadId, pending, dest, obj });
+    pendingKeys.push(pending);
+    files.push({
+      q,
+      uploadId: ans.uploadId,
+      dest,
+      filename: obj.customMetadata?.filename ?? q.title,
+      contentType: obj.httpMetadata?.contentType ?? "application/octet-stream",
+      size: obj.size,
+    });
   }
-
-  const colSql = cols.map((q) => `"${columnName(q.slug)}"`).join(", ");
-  const placeholders = cols.map(() => "?").join(", ");
-  const values = cols.map((q) => {
-    const v = parsed.data[q.id];
-    if (v === undefined) return null;
-    if (q.type === "file") return (v as { uploadId: string }).uploadId;
-    if (q.type === "multi_select") return JSON.stringify(v);
-    return v as string | number;
-  });
-
-  const stmts = [
-    env.DB.prepare("INSERT INTO submissions (id, form_id, created_at) VALUES (?, ?, ?)").bind(
-      submissionId,
-      row.id,
-      Date.now(),
-    ),
-    env.DB.prepare(
-      `INSERT INTO ${table} (id, created_at${colSql ? ", " + colSql : ""}) VALUES (?, ?${cols.length ? ", " + placeholders : ""})`,
-    ).bind(submissionId, Date.now(), ...values),
-  ];
-  for (const d of destKeys) {
-    stmts.push(
-      env.DB.prepare(
-        "INSERT INTO files (id, submission_id, question_id, upload_id, r2_key, filename, content_type, size) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-      ).bind(
-        crypto.randomUUID(),
-        submissionId,
-        d.q.id,
-        d.uploadId,
-        d.dest,
-        d.obj.customMetadata?.filename ?? d.q.title,
-        d.obj.httpMetadata?.contentType ?? "application/octet-stream",
-        d.obj.size,
-      ),
-    );
-  }
-  await env.DB.batch(stmts);
-  for (const d of destKeys) await env.FILES.delete(d.pending);
+  await insertParsedSubmission(submissionId, row, schema, parsed.data, files);
+  for (const key of pendingKeys) await env.FILES.delete(key);
   return { ok: true, id: submissionId };
+}
+
+export async function importSubmissions(
+  user: SessionUser,
+  formId: string,
+  mapping: ColumnMapping,
+  rows: Record<string, string>[],
+): Promise<{ ok: true; imported: number } | { ok: false; analysis: ImportAnalysis }> {
+  const row = await env.DB.prepare("SELECT * FROM forms WHERE id = ?").bind(formId).first<FormRow>();
+  if (!row) throw new HttpError("Not found", 404);
+  if (!row.published || !row.published_schema) throw new HttpError("Form is not published", 400);
+  const schema = normalizeFormSchema(JSON.parse(row.published_schema) as FormSchema);
+  const analysis = analyzeImport(schema, mapping, rows);
+  if (!analysis.ready) return { ok: false, analysis };
+
+  let imported = 0;
+  for (let i = 0; i < rows.length; i++) {
+    const prepared = prepareImportRow(schema, mapping, rows[i]!);
+    const submissionId = crypto.randomUUID();
+    const answers: Answers = { ...prepared.answers };
+    const files: ImportedFile[] = [];
+    for (const q of importFields(schema)) {
+      if (q.type !== "file") continue;
+      const url = answers[q.id];
+      if (typeof url !== "string" || !isHttpsFileUrl(url)) continue;
+      const uploadId = crypto.randomUUID();
+      const dest = `submissions/${submissionId}/${uploadId}`;
+      const file = await fetchImportFile(url, q, dest, uploadId);
+      answers[q.id] = { uploadId };
+      files.push(file);
+    }
+    const parsed = parseAnswers(schema, answers);
+    if (!parsed.ok) throw new HttpError(`Row ${importDataRowNumber(i)}: ${parsed.error}`, 400);
+    await insertParsedSubmission(submissionId, row, schema, parsed.data, files);
+    imported += 1;
+  }
+  await insertAudit({
+    actorId: user.id,
+    action: "form.import",
+    entityType: "form",
+    entityId: formId,
+    meta: { imported },
+  });
+  return { ok: true, imported };
 }
 
 type InboxFileRow = { id: string; submission_id: string; question_id: string; filename: string };

@@ -49,6 +49,12 @@ function AdminLayout() {
   const nav = [
     { to: "/admin" as const, label: "Forms", exact: true, on: pathname === "/admin" },
     {
+      to: "/admin/import" as const,
+      label: "Import",
+      exact: false,
+      on: pathname.startsWith("/admin/import"),
+    },
+    {
       to: "/admin/templates" as const,
       label: "Templates",
       exact: false,

@@ -272,8 +272,8 @@ export function Builder(props: Props) {
     : undefined;
 
   return (
-    <div className="flex min-h-0 min-w-[56rem] flex-1 flex-col overflow-hidden">
-      <div className="flex items-center gap-3 border-b px-4 py-3">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="flex shrink-0 items-center gap-3 border-b px-4 py-3">
         <Input
           aria-label="Form title"
           className="max-w-xs"
@@ -336,20 +336,21 @@ export function Builder(props: Props) {
           </Button>
         </div>
       </div>
-      <div className="grid h-0 min-h-0 min-w-0 flex-1 grid-cols-[16rem_minmax(0,1fr)_18rem] grid-rows-1 overflow-x-auto overflow-y-hidden">
-      <aside className="flex min-h-0 flex-col overflow-hidden border-r bg-card self-start">
+      <div className="min-h-0 min-w-0 flex-1 overflow-x-auto overflow-y-hidden">
+      <div className="grid h-full min-h-0 min-w-[56rem] grid-cols-[16rem_minmax(0,1fr)_18rem] grid-rows-1">
+      <aside className="flex min-h-0 min-w-0 flex-col overflow-hidden border-r bg-card self-start">
         {/* ponytail: 16rem reserves admin chrome + pinned add-page footer; upgrade path: CSS var from layout */}
-        <div className="max-h-[calc(100dvh-16rem)] min-h-0 overflow-y-auto overscroll-y-contain">
-          <div className="grid gap-1 p-3">
+        <div className="max-h-[calc(100dvh-16rem)] min-h-0 min-w-0 overflow-x-hidden overflow-y-auto overscroll-y-contain">
+          <div className="grid min-w-0 gap-1 p-3">
             <Button
               type="button"
               variant={selected === "welcome" ? "secondary" : "ghost"}
-              className="justify-start"
+              className="h-auto min-w-0 justify-start py-2"
               onClick={() => setSelected("welcome")}
             >
-              Welcome
+              <span className="min-w-0 flex-1 truncate text-left">Welcome</span>
               {diff.welcome ? (
-                <Badge variant="secondary" className="ml-auto">
+                <Badge variant="secondary" className="ml-2 shrink-0">
                   Edited
                 </Badge>
               ) : null}
@@ -394,12 +395,12 @@ export function Builder(props: Props) {
             <Button
               type="button"
               variant={selected === "ending" ? "secondary" : "ghost"}
-              className="justify-start"
+              className="h-auto min-w-0 justify-start py-2"
               onClick={() => setSelected("ending")}
             >
-              Ending
+              <span className="min-w-0 flex-1 truncate text-left">Ending</span>
               {diff.ending ? (
-                <Badge variant="secondary" className="ml-auto">
+                <Badge variant="secondary" className="ml-2 shrink-0">
                   Edited
                 </Badge>
               ) : null}
@@ -542,6 +543,7 @@ export function Builder(props: Props) {
         </ScrollArea>
       </aside>
       </div>
+      </div>
     </div>
   );
 }
@@ -595,7 +597,7 @@ function PageRow(props: {
           ) : null}
         </Button>
       </div>
-      <div className="pl-2">{props.children}</div>
+      <div className="pl-2 min-w-0">{props.children}</div>
     </div>
   );
 }

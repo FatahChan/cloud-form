@@ -1,0 +1,5 @@
+full_name,email,phone,resume,motivation
+Bob Bad,bob@not-an-email,555-1234,http://insecure.example.com/cv.pdf,Too short
+,alice@example.com,+12133734253,https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf,Missing name on this row should block import.
+Carol Valid,carol@example.com,not-a-phone,https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf,Phone is invalid but other fields look fine.
+Dan Empty,dan@example.com,+12133734253,ftp://files.example.com/resume.pdf,
