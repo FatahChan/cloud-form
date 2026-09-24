@@ -335,53 +335,55 @@ function QuestionScreen(props: {
 }) {
   const multi = props.questions.filter((q) => q.type !== "statement").length > 1;
   return (
-    <div className="mx-auto flex w-full max-w-xl flex-1 flex-col justify-center gap-4 px-6 py-16">
-      <Button variant="ghost" size="sm" className="w-fit" type="button" aria-label="Back" onClick={props.back}>
-        ← Back
-      </Button>
-      {(props.page.title || props.page.description) && (
-        <div className="grid gap-2">
-          {props.page.title && (
-            <h1 className="font-heading text-3xl font-medium tracking-tight text-balance">{props.page.title}</h1>
-          )}
-          {props.page.description && <p className="text-muted-foreground text-pretty">{props.page.description}</p>}
-        </div>
-      )}
-      <div className="grid gap-2">
-        {props.questions.map((q) => (
-          <div key={q.id} className="grid gap-3">
-            <div className="grid gap-1">
-              <h2
-                className={
-                  multi || props.page.title
-                    ? "font-heading text-xl font-medium tracking-tight text-balance"
-                    : "font-heading text-3xl font-medium tracking-tight text-balance"
-                }
-              >
-                {q.title}
-              </h2>
-              {q.description && <p className="text-muted-foreground">{q.description}</p>}
-            </div>
-            <Field
-              q={q}
-              value={props.answers[q.id]}
-              onChange={(v) => props.onChange(q.id, v)}
-              mode={props.mode}
-              autoFocus={q.id === props.firstFieldId}
-              onPickFile={props.onPickFile}
-            />
-          </div>
-        ))}
-      </div>
-      {props.error && (
-        <Alert variant="destructive">
-          <AlertDescription>{props.error}</AlertDescription>
-        </Alert>
-      )}
-      <div>
-        <Button size="lg" className="w-fit px-6" type="button" disabled={props.busy} onClick={props.onOk}>
-          {props.okLabel} <Kbd className="ml-1">↵</Kbd>
+    <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
+      <div className="mx-auto flex min-h-full w-full max-w-xl flex-col justify-center gap-4 px-6 py-16">
+        <Button variant="ghost" size="sm" className="w-fit" type="button" aria-label="Back" onClick={props.back}>
+          ← Back
         </Button>
+        {(props.page.title || props.page.description) && (
+          <div className="grid gap-2">
+            {props.page.title && (
+              <h1 className="font-heading text-3xl font-medium tracking-tight text-balance">{props.page.title}</h1>
+            )}
+            {props.page.description && <p className="text-muted-foreground text-pretty">{props.page.description}</p>}
+          </div>
+        )}
+        <div className="grid gap-2">
+          {props.questions.map((q) => (
+            <div key={q.id} className="grid gap-3">
+              <div className="grid gap-1">
+                <h2
+                  className={
+                    multi || props.page.title
+                      ? "font-heading text-xl font-medium tracking-tight text-balance"
+                      : "font-heading text-3xl font-medium tracking-tight text-balance"
+                  }
+                >
+                  {q.title}
+                </h2>
+                {q.description && <p className="text-muted-foreground">{q.description}</p>}
+              </div>
+              <Field
+                q={q}
+                value={props.answers[q.id]}
+                onChange={(v) => props.onChange(q.id, v)}
+                mode={props.mode}
+                autoFocus={q.id === props.firstFieldId}
+                onPickFile={props.onPickFile}
+              />
+            </div>
+          ))}
+        </div>
+        {props.error && (
+          <Alert variant="destructive">
+            <AlertDescription>{props.error}</AlertDescription>
+          </Alert>
+        )}
+        <div>
+          <Button size="lg" className="w-fit px-6" type="button" disabled={props.busy} onClick={props.onOk}>
+            {props.okLabel} <Kbd className="ml-1">↵</Kbd>
+          </Button>
+        </div>
       </div>
     </div>
   );

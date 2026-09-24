@@ -337,9 +337,9 @@ export function Builder(props: Props) {
         </div>
       </div>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-auto overflow-y-hidden">
-      <div className="grid min-h-0 min-w-[56rem] flex-1 grid-cols-[16rem_minmax(0,1fr)_18rem] grid-rows-1">
-      <aside className="flex min-h-0 min-w-0 flex-col overflow-hidden border-r bg-card">
-        <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain">
+      <div className="grid min-h-0 min-w-[56rem] flex-1 grid-cols-[16rem_minmax(0,1fr)_18rem] grid-rows-[minmax(0,1fr)] overflow-hidden">
+      <aside className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden border-r bg-card">
+        <div className="min-h-0 min-w-0 flex-1 basis-0 overflow-x-hidden overflow-y-auto overscroll-y-contain">
           <div className="grid min-w-0 gap-1 p-3">
             <Button
               type="button"
@@ -431,7 +431,7 @@ export function Builder(props: Props) {
           <FormPlayer mode="preview" schema={schema} screen={selected} />
         )}
       </div>
-      <aside className="flex min-h-0 flex-col overflow-hidden border-l bg-card">
+      <aside className="flex h-full min-h-0 flex-col overflow-hidden border-l bg-card">
         <ScrollArea className="min-h-0 size-full flex-1">
           <div className="grid gap-4 p-4">
             {selected === "welcome" && (

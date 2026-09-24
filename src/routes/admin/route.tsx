@@ -65,7 +65,7 @@ function AdminLayout() {
   ];
 
   return (
-    <div className="flex min-h-svh flex-col">
+    <div className="flex h-svh flex-col overflow-hidden">
       <header className="sticky top-0 z-20 border-b bg-background/80 backdrop-blur">
         <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-1 px-4">
           <Link to="/admin" className="mr-3 flex items-center text-foreground hover:text-foreground">
@@ -101,7 +101,7 @@ function AdminLayout() {
           </div>
         </div>
       </header>
-      <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         <Outlet />
       </main>
     </div>
