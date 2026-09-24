@@ -336,11 +336,10 @@ export function Builder(props: Props) {
           </Button>
         </div>
       </div>
-      <div className="min-h-0 min-w-0 flex-1 overflow-x-auto overflow-y-hidden">
-      <div className="grid h-full min-h-0 min-w-[56rem] grid-cols-[16rem_minmax(0,1fr)_18rem] grid-rows-1">
-      <aside className="flex min-h-0 min-w-0 flex-col overflow-hidden border-r bg-card self-start">
-        {/* ponytail: 16rem reserves admin chrome + pinned add-page footer; upgrade path: CSS var from layout */}
-        <div className="max-h-[calc(100dvh-16rem)] min-h-0 min-w-0 overflow-x-hidden overflow-y-auto overscroll-y-contain">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-auto overflow-y-hidden">
+      <div className="grid min-h-0 min-w-[56rem] flex-1 grid-cols-[16rem_minmax(0,1fr)_18rem] grid-rows-1">
+      <aside className="flex min-h-0 min-w-0 flex-col overflow-hidden border-r bg-card">
+        <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain">
           <div className="grid min-w-0 gap-1 p-3">
             <Button
               type="button"
@@ -433,7 +432,7 @@ export function Builder(props: Props) {
         )}
       </div>
       <aside className="flex min-h-0 flex-col overflow-hidden border-l bg-card">
-        <ScrollArea className="min-h-0 flex-1">
+        <ScrollArea className="min-h-0 size-full flex-1">
           <div className="grid gap-4 p-4">
             {selected === "welcome" && (
               <>
