@@ -415,7 +415,13 @@ function Field(props: {
   }
   if (q.type === "phone") {
     return (
-      <PhoneField value={value} onChange={(v) => onChange(v)} title={q.title} placeholder={q.placeholder} />
+      <PhoneField
+        autoFocus={props.autoFocus}
+        value={value}
+        onChange={(v) => onChange(v)}
+        title={q.title}
+        placeholder={q.placeholder}
+      />
     );
   }
   if (q.type === "long_text") {

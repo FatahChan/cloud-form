@@ -102,20 +102,25 @@ function FormsPage() {
       title="Forms"
       description="Build, publish, and read responses."
       action={
-        <Button
-          type="button"
-          onClick={async () => {
-            setError(null);
-            try {
-              await api("/api/forms", { method: "POST", body: JSON.stringify({ title: "Untitled form" }) });
-              await load();
-            } catch (e) {
-              setError(e instanceof ApiError ? e.message : "Create failed");
-            }
-          }}
-        >
-          New form
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" asChild>
+            <Link to="/admin/forms/from-schema">New form from schema</Link>
+          </Button>
+          <Button
+            type="button"
+            onClick={async () => {
+              setError(null);
+              try {
+                await api("/api/forms", { method: "POST", body: JSON.stringify({ title: "Untitled form" }) });
+                await load();
+              } catch (e) {
+                setError(e instanceof ApiError ? e.message : "Create failed");
+              }
+            }}
+          >
+            New form
+          </Button>
+        </div>
       }
     >
       {error && (

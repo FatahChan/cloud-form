@@ -410,7 +410,7 @@ export function Builder(props: Props) {
           <Button type="button" variant="outline" onClick={addPage}>
             Add page
           </Button>
-          <Select onValueChange={(t) => addQuestion(t as Question["type"])}>
+          <Select value="" onValueChange={(t) => addQuestion(t as Question["type"])}>
             <SelectTrigger className="w-full">
               <SelectValue placeholder="Add question" />
             </SelectTrigger>

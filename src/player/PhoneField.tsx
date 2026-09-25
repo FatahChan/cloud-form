@@ -11,6 +11,7 @@ export function PhoneField(props: {
   onChange: (v: string) => void;
   title: string;
   placeholder?: string;
+  autoFocus?: boolean;
 }) {
   return (
     <PhoneInput
@@ -19,7 +20,7 @@ export function PhoneField(props: {
       defaultCountry={localeCountry()}
       placeholder={props.placeholder}
       aria-label={props.title}
-      autoFocus
+      autoFocus={props.autoFocus}
       className="w-full min-w-0 [&_button]:h-11 [&_input]:h-11 [&_input]:text-base"
     />
   );
