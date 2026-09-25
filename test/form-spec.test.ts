@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { parseAnswers } from "../src/shared/answers";
 import { FORM_SPEC_EXAMPLE, formSpecJsonSchema, parseFormSpec } from "../src/shared/form-spec";
 
 describe("form spec", () => {
@@ -6,11 +7,22 @@ describe("form spec", () => {
     const r = parseFormSpec(JSON.stringify(FORM_SPEC_EXAMPLE));
     if (!r.ok) throw new Error(r.errors.join("\n"));
     expect(r.title).toBe("Event registration");
-    expect(r.schema.pages?.map((p) => p.questionIds.length)).toEqual([3, 7]);
+    expect(r.schema.pages?.map((p) => p.questionIds.length)).toEqual([4, 7]);
     const slugs = r.schema.questions.flatMap((q) => ("slug" in q ? [q.slug] : []));
-    expect(new Set(slugs).size).toBe(9);
+    expect(new Set(slugs).size).toBe(10);
     expect(r.schema.questions.find((q) => q.type === "phone")).toMatchObject({ required: false });
     expect(r.schema.questions.find((q) => q.type === "email")).toMatchObject({ required: true });
+  });
+
+  it("accepts only listed options for dropdown answers", () => {
+    const r = parseFormSpec(
+      JSON.stringify({ title: "T", pages: [{ questions: [{ type: "dropdown", title: "Country", options: ["Egypt", "Oman"] }] }] }),
+    );
+    if (!r.ok) throw new Error(r.errors.join("\n"));
+    const id = r.schema.questions[0]!.id;
+    expect(parseAnswers(r.schema, { [id]: "Oman" })).toEqual({ ok: true, data: { [id]: "Oman" } });
+    expect(parseAnswers(r.schema, { [id]: "Mars" })).toMatchObject({ ok: false });
+    expect(parseAnswers(r.schema, {})).toMatchObject({ ok: false, error: "Missing Country" });
   });
 
   it("dedupes slugs and fills defaults", () => {

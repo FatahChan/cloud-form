@@ -41,6 +41,13 @@ const specQuestionSchema = z.discriminatedUnion(
       required,
       options: z.array(z.string().trim().min(1).max(80)).min(2).max(26),
     }),
+    z.strictObject({
+      type: z.literal("dropdown"),
+      title,
+      description,
+      required,
+      options: z.array(z.string().trim().min(1).max(80)).min(2).max(500),
+    }),
     z.strictObject({ type: z.literal("date"), title, description, required }),
     z.strictObject({
       type: z.literal("file"),
@@ -54,7 +61,7 @@ const specQuestionSchema = z.discriminatedUnion(
   {
     error: (iss) =>
       iss.code === "invalid_union"
-        ? "Unknown question type. Use one of: statement, short_text, long_text, email, phone, number, select, multi_select, date, file"
+        ? "Unknown question type. Use one of: statement, short_text, long_text, email, phone, number, select, multi_select, dropdown, date, file"
         : undefined,
   },
 );
@@ -90,6 +97,7 @@ export const FORM_SPEC_EXAMPLE = {
         { type: "short_text", title: "Full name", placeholder: "Jane Doe" },
         { type: "email", title: "Email" },
         { type: "phone", title: "Phone", required: false },
+        { type: "dropdown", title: "Country", options: ["Egypt", "Indonesia", "Malaysia", "Saudi Arabia", "Other"] },
       ],
     },
     {

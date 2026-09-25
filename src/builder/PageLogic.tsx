@@ -138,7 +138,7 @@ export function PageLogic(props: {
 }
 
 function optionsOf(q: { type: string; options?: string[] }): string[] {
-  return q.type === "select" || q.type === "multi_select" ? (q.options ?? []) : [];
+  return q.type === "select" || q.type === "multi_select" || q.type === "dropdown" ? (q.options ?? []) : [];
 }
 
 function ConditionRow(props: {

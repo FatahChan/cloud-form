@@ -70,7 +70,8 @@ export function parseAnswers(
         out[q.id] = v;
         break;
       }
-      case "select": {
+      case "select":
+      case "dropdown": {
         if (typeof v !== "string" || !q.options.includes(v)) {
           return { ok: false, error: `${q.title} is not a valid choice` };
         }

@@ -24,6 +24,7 @@ const TYPE_FIELDS: [string, string][] = [
   ["long_text · email · phone", "placeholder"],
   ["number", "min, max"],
   ["select · multi_select", "options (2–26, required)"],
+  ["dropdown", "options (2–500, required), searchable"],
   ["date", "—"],
   ["file", `accept (${Object.keys(FILE_KINDS).join(", ")}), maxSizeMb (1–25)`],
   ["statement", "text only, no answer, no required"],

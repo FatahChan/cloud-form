@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckIcon } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList } from "@/components/ui/combobox";
 import { Input } from "@/components/ui/input";
 import { Kbd } from "@/components/ui/kbd";
 import { Progress } from "@/components/ui/progress";
@@ -207,14 +208,17 @@ export function FormPlayer({ schema, mode, slug, screen }: Props) {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      const el = e.target as HTMLElement | null;
+      const tag = el?.tagName;
       if (e.key === "Enter" && !e.shiftKey) {
-        const tag = (e.target as HTMLElement | null)?.tagName;
         if (hasLongText && tag === "TEXTAREA") return;
+        // Enter inside an open combobox (dropdown field, phone country) picks an option, not the next page.
+        if (el?.getAttribute("aria-expanded") === "true") return;
         e.preventDefault();
         void goNext();
         return;
       }
-      if (!loneChoice) return;
+      if (!loneChoice || tag === "INPUT" || tag === "TEXTAREA") return;
       const k = e.key.toUpperCase();
       if (k.length !== 1 || k < "A" || k > "Z") return;
       const idx = k.charCodeAt(0) - 65;
@@ -461,6 +465,32 @@ function Field(props: {
         value={typeof value === "string" ? value : ""}
         onChange={(e) => onChange(e.target.value)}
       />
+    );
+  }
+  if (q.type === "dropdown") {
+    return (
+      <Combobox
+        items={q.options}
+        value={typeof value === "string" && value ? value : null}
+        onValueChange={(v: string | null) => onChange(v ?? "")}
+      >
+        <ComboboxInput
+          autoFocus={props.autoFocus}
+          aria-label={q.title}
+          placeholder="Type or pick an option"
+          className="h-11 w-full text-base [&_input]:text-base"
+        />
+        <ComboboxContent>
+          <ComboboxEmpty>No matching option.</ComboboxEmpty>
+          <ComboboxList>
+            {(opt: string) => (
+              <ComboboxItem key={opt} value={opt}>
+                {opt}
+              </ComboboxItem>
+            )}
+          </ComboboxList>
+        </ComboboxContent>
+      </Combobox>
     );
   }
   if (q.type === "select" || q.type === "multi_select") {

@@ -102,6 +102,13 @@ export const questionSchema = z.discriminatedUnion("type", [
     options: z.array(z.string().min(1).max(80)).min(2).max(26),
   }),
   z.object({
+    type: z.literal("dropdown"),
+    ...baseQ,
+    slug: slugSchema,
+    required: z.boolean(),
+    options: z.array(z.string().min(1).max(80)).min(2).max(500),
+  }),
+  z.object({
     type: z.literal("date"),
     ...baseQ,
     slug: slugSchema,
@@ -335,7 +342,7 @@ export function newQuestion(type: Question["type"], taken: Set<string>): Questio
   if (type === "statement") return { type, id, title: "A note" };
   const title = "";
   const slug = slugify(title, taken);
-  if (type === "select" || type === "multi_select") {
+  if (type === "select" || type === "multi_select" || type === "dropdown") {
     return { type, id, slug, title, required: true, options: ["Option A", "Option B"] };
   }
   if (type === "file") {

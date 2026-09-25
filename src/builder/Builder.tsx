@@ -3,13 +3,14 @@ import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } 
 import { CSS } from "@dnd-kit/utilities";
 import { useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import { toast } from "sonner";
-import { GripVertical, LockIcon } from "lucide-react";
+import { CopyIcon, GripVertical, LockIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Field } from "@/components/field";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -45,6 +46,7 @@ const TYPES: Question["type"][] = [
   "number",
   "select",
   "multi_select",
+  "dropdown",
   "date",
   "file",
   "statement",
@@ -163,6 +165,23 @@ export function Builder(props: Props) {
       return normalizeFormSchema({ ...n, questions: [...n.questions, q], pages: nextPages });
     });
     setSelected({ questionId: q.id });
+  }
+
+  function duplicateQuestion(id: string) {
+    const src = schema.questions.find((q) => q.id === id);
+    if (!src) return;
+    const copy: Question = { ...src, id: crypto.randomUUID(), retired: undefined };
+    if (copy.type !== "statement") copy.slug = slugify(copy.title, taken());
+    setSchema((s) => {
+      const n = normalizeFormSchema(s);
+      const pages = n.pages.map((p) => {
+        const at = p.questionIds.indexOf(id);
+        if (at < 0) return p;
+        return { ...p, questionIds: [...p.questionIds.slice(0, at + 1), copy.id, ...p.questionIds.slice(at + 1)] };
+      });
+      return normalizeFormSchema({ ...n, questions: [...n.questions, copy], pages });
+    });
+    setSelected({ questionId: copy.id });
   }
 
   function addPage() {
@@ -384,6 +403,7 @@ export function Builder(props: Props) {
                           }
                           on={isQuestionScreen(selected) && selected.questionId === q.id}
                           onClick={() => setSelected({ questionId: q.id })}
+                          onDuplicate={() => duplicateQuestion(q.id)}
                         />
                       ))}
                     </SortableContext>
@@ -601,7 +621,13 @@ function PageRow(props: {
   );
 }
 
-function SortRow(props: { q: Question; on: boolean; mark?: "New" | "Edited"; onClick: () => void }) {
+function SortRow(props: {
+  q: Question;
+  on: boolean;
+  mark?: "New" | "Edited";
+  onClick: () => void;
+  onDuplicate: () => void;
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: props.q.id });
   return (
     <div
@@ -610,22 +636,32 @@ function SortRow(props: { q: Question; on: boolean; mark?: "New" | "Edited"; onC
       style={{ transform: CSS.Transform.toString(transform), transition }}
     >
       <DragHandle label="Drag to reorder question" {...attributes} {...listeners} />
-      <Button
-        type="button"
-        variant={props.on ? "secondary" : "ghost"}
-        className="h-auto min-w-0 flex-1 justify-start py-2 text-left"
-        onClick={props.onClick}
-      >
-        <span className="min-w-0 flex-1 truncate">
-          {props.q.retired ? <Badge variant="outline" className="mr-2">Retired</Badge> : null}
-          {props.q.title.trim() || "Untitled"}
-        </span>
-        {props.mark ? (
-          <Badge variant="secondary" className="ml-2 shrink-0">
-            {props.mark}
-          </Badge>
-        ) : null}
-      </Button>
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          <Button
+            type="button"
+            variant={props.on ? "secondary" : "ghost"}
+            className="h-auto min-w-0 flex-1 justify-start py-2 text-left"
+            onClick={props.onClick}
+          >
+            <span className="min-w-0 flex-1 truncate">
+              {props.q.retired ? <Badge variant="outline" className="mr-2">Retired</Badge> : null}
+              {props.q.title.trim() || "Untitled"}
+            </span>
+            {props.mark ? (
+              <Badge variant="secondary" className="ml-2 shrink-0">
+                {props.mark}
+              </Badge>
+            ) : null}
+          </Button>
+        </ContextMenuTrigger>
+        <ContextMenuContent>
+          <ContextMenuItem onSelect={props.onDuplicate}>
+            <CopyIcon />
+            Duplicate
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
     </div>
   );
 }
@@ -788,15 +824,17 @@ function QuestionInspect(props: {
           </Field>
         </>
       )}
-      {(q.type === "select" || q.type === "multi_select") && (
-        <Field label="Options (one per line)">
+      {(q.type === "select" || q.type === "multi_select" || q.type === "dropdown") && (
+        <Field label="Options (one per line)" hint={q.type === "dropdown" ? "Up to 500. Respondents can type to search." : undefined}>
           <Textarea
             rows={6}
             value={q.options.join("\n")}
             onChange={(e) => {
               const options = e.target.value.split("\n");
               props.onChange((prev) =>
-                prev.type === "select" || prev.type === "multi_select" ? { ...prev, options } : prev,
+                prev.type === "select" || prev.type === "multi_select" || prev.type === "dropdown"
+                  ? { ...prev, options }
+                  : prev,
               );
             }}
           />
