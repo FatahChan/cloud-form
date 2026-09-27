@@ -2,6 +2,8 @@
 const ITERATIONS = 100_000;
 const KEY_BITS = 256;
 
+export const DUMMY_HASH = `pbkdf2$${ITERATIONS}$${"0".repeat(32)}$${"0".repeat(64)}`;
+
 function buf(bytes: Uint8Array): ArrayBuffer {
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 }

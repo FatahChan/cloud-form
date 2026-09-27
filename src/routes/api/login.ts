@@ -1,10 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { json, withCookies } from "~/server/http";
+import { rateLimit } from "~/server/middleware";
 import { readJson, run } from "~/server/serve";
 import * as auth from "~/server/services/auth";
 
 export const Route = createFileRoute("/api/login")({
   server: {
+    middleware: [rateLimit("AUTH_LIMITER")],
     handlers: {
       POST: ({ request }) =>
         run(async () => {

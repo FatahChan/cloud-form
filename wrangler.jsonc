@@ -1,7 +1,7 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "cloud-form",
-	"main": "@tanstack/react-start/server-entry",
+	"main": "src/server.ts",
 	"compatibility_date": "2026-08-22",
 	"compatibility_flags": [
 		"nodejs_compat"
@@ -19,5 +19,21 @@
 			"binding": "FILES",
 			"bucket_name": "cloud-form-files"
 		}
-	]
+	],
+	// namespace_id is account-wide: another Worker reusing these IDs would share the counters.
+	"ratelimits": [
+		{
+			"name": "AUTH_LIMITER",
+			"namespace_id": "73101",
+			"simple": { "limit": 10, "period": 60 }
+		},
+		{
+			"name": "PUBLIC_LIMITER",
+			"namespace_id": "73102",
+			"simple": { "limit": 30, "period": 60 }
+		}
+	],
+	"triggers": {
+		"crons": ["0 * * * *"]
+	}
 }

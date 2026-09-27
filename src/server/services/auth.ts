@@ -1,7 +1,7 @@
 import { insertAudit } from "../audit";
 import { HttpError } from "../errors";
 import { env } from "../http";
-import { checkPassword, hashPassword, verifyPassword } from "../password";
+import { checkPassword, DUMMY_HASH, hashPassword, verifyPassword } from "../password";
 import {
   clearCookie,
   createSession,
@@ -48,12 +48,13 @@ export async function login(
   request: Request,
 ): Promise<{ cookie: string }> {
   const email = input.email?.trim().toLowerCase() ?? "";
+  if (!input.password) throw new HttpError("Invalid email or password", 401);
   const user = await env.DB.prepare("SELECT id, password_hash FROM users WHERE email = ?")
     .bind(email)
     .first<{ id: string; password_hash: string }>();
-  if (!user || !input.password || !(await verifyPassword(input.password, user.password_hash))) {
-    throw new HttpError("Invalid email or password", 401);
-  }
+  // Unknown emails still pay the full PBKDF2 cost so response time doesn't reveal which accounts exist.
+  const ok = await verifyPassword(input.password, user?.password_hash ?? DUMMY_HASH);
+  if (!user || !ok) throw new HttpError("Invalid email or password", 401);
   const { cookie } = await createSession(env.DB, user.id, isSecure(request));
   return { cookie };
 }

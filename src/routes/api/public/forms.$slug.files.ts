@@ -1,10 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { HttpError } from "~/server/errors";
+import { rateLimit } from "~/server/middleware";
 import { serve } from "~/server/serve";
 import * as submissions from "~/server/services/submissions";
 
 export const Route = createFileRoute("/api/public/forms/$slug/files")({
   server: {
+    middleware: [rateLimit("PUBLIC_LIMITER")],
     handlers: {
       POST: async ({ request, params }) =>
         serve(async () => {
