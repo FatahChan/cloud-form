@@ -59,23 +59,38 @@ export function isHttpsFileUrl(raw: string): boolean {
   }
 }
 
-/** ponytail: hostname blocklist only; upgrade path is DNS-resolve and reject private A/AAAA. */
+function ipv4Blocked(a: number, b: number): boolean {
+  if (a === 0 || a === 10 || a === 127) return true;
+  if (a === 169 && b === 254) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 100 && b >= 64 && b <= 127) return true;
+  return a >= 224;
+}
+
+/** True for loopback, private, link-local, CGNAT, multicast/reserved, and IPv4-mapped forms of those. */
+export function isBlockedIp(ip: string): boolean {
+  const h = ip.toLowerCase().replace(/^\[|\]$/g, "");
+  const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
+  if (v4) return ipv4Blocked(Number(v4[1]), Number(v4[2]));
+  if (!h.includes(":")) return false;
+  if (h === "::" || h === "::1") return true;
+  const mappedDotted = /^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/.exec(h);
+  if (mappedDotted) return isBlockedIp(mappedDotted[1]!);
+  const mappedHex = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(h);
+  if (mappedHex) {
+    const hi = parseInt(mappedHex[1]!, 16);
+    return ipv4Blocked(hi >> 8, hi & 0xff);
+  }
+  return h.startsWith("fc") || h.startsWith("fd") || /^fe[89ab]/.test(h) || h.startsWith("ff");
+}
+
+/** Hostname-string check only; the server also resolves DNS before fetching (see importFetch). */
 export function isBlockedImportHost(hostname: string): boolean {
   const h = hostname.toLowerCase().replace(/\.+$/, "").replace(/^\[|\]$/g, "");
-  if (h === "localhost" || h === "0.0.0.0" || h === "::1" || h === "::") return true;
+  if (h === "localhost" || h === "0.0.0.0") return true;
   if (h.endsWith(".localhost") || h.endsWith(".local") || h.endsWith(".internal")) return true;
-  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
-  if (m) {
-    const a = Number(m[1]);
-    const b = Number(m[2]);
-    if (a === 10 || a === 127 || a === 0) return true;
-    if (a === 169 && b === 254) return true;
-    if (a === 192 && b === 168) return true;
-    if (a === 172 && b >= 16 && b <= 31) return true;
-    if (a === 100 && b >= 64 && b <= 127) return true;
-  }
-  if (h.startsWith("fc") || h.startsWith("fd") || h.startsWith("fe80:")) return true;
-  return false;
+  return isBlockedIp(h);
 }
 
 export function suggestColumnMapping(headers: string[], schema: FormSchema): ColumnMapping {

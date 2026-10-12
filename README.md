@@ -35,3 +35,17 @@ npm run deploy
 - `npm test` — Worker flow test (publish DDL, file rules, email column lookup)
 
 First visit `/admin/setup` to create the owner. Invite others from **Team** (copy the link). Public forms live at `/f/<slug>`.
+
+## Securing your deployment
+
+Until the owner account exists, `/admin/setup` is open to anyone who finds your Worker URL — on a public `*.workers.dev` address, whoever reaches it first becomes the owner. To close that window:
+
+1. Before (or right after) the first deploy, add a [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/) self-hosted application covering `/admin/setup` and `/api/setup` on your Worker's hostname, allowing only your own email.
+2. Create the owner account through `/admin/setup`.
+3. Remove the policy if you like — setup returns `409 Already set up` once an owner exists.
+
+Other notes:
+
+- Only the **owner** can create invite links. Invited admins can build, publish, import, and delete forms.
+- State-changing API calls must come from the same origin (checked via `Origin`/`Referer`) on top of `SameSite=Lax` session cookies.
+- Import file links are resolved over DNS-over-HTTPS (`cloudflare-dns.com`) and rejected if they point at private or link-local addresses. If the resolver is unreachable, the link is rejected.

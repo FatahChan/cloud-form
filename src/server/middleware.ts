@@ -1,4 +1,6 @@
 import { createMiddleware } from "@tanstack/react-start";
+import { assertSameOrigin } from "./csrf";
+import { HttpError } from "./errors";
 import { env } from "./http";
 import { validateSession, type SessionUser } from "./session";
 
@@ -25,6 +27,19 @@ export const authMiddleware = createMiddleware().server(async ({ request, next }
     });
   }
   return result;
+});
+
+// Cookies are SameSite=Lax; this adds an Origin/Referer check on every mutation as a second layer.
+export const sameOrigin = createMiddleware().server(async ({ request, next }) => {
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    try {
+      assertSameOrigin(request);
+    } catch (e) {
+      if (e instanceof HttpError) return Response.json({ error: e.message }, { status: e.status });
+      throw e;
+    }
+  }
+  return next();
 });
 
 // ponytail: per-IP only, and CF counts per location, so a distributed botnet slips past.

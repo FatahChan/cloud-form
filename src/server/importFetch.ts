@@ -1,5 +1,5 @@
 import { FILE_KINDS, fileKindFor, type FileKind, type Question } from "../shared/schema";
-import { isBlockedImportHost, isHttpsFileUrl } from "../shared/import";
+import { isBlockedImportHost, isBlockedIp, isHttpsFileUrl } from "../shared/import";
 import { HttpError } from "./errors";
 import { putPending } from "./files";
 
@@ -57,6 +57,36 @@ function kindFor(filename: string, mime: string): FileKind | null {
   return null;
 }
 
+const DOH_URL = "https://cloudflare-dns.com/dns-query";
+
+async function resolve(hostname: string, type: "A" | "AAAA"): Promise<string[]> {
+  const url = `${DOH_URL}?name=${encodeURIComponent(hostname)}&type=${type}`;
+  const res = await fetch(url, { headers: { accept: "application/dns-json" }, signal: AbortSignal.timeout(5000) });
+  if (!res.ok) throw new Error(`DoH ${res.status}`);
+  const body = (await res.json()) as { Status: number; Answer?: { type: number; data: string }[] };
+  // NXDOMAIN (3) just means no records of this type; anything else non-zero is a resolver failure.
+  if (body.Status !== 0 && body.Status !== 3) throw new Error(`DoH status ${body.Status}`);
+  const want = type === "A" ? 1 : 28;
+  return (body.Answer ?? []).filter((r) => r.type === want).map((r) => r.data);
+}
+
+/**
+ * Resolve the host and reject if any A/AAAA record is private, so a public name pointing at an
+ * internal address can't be used for SSRF. Fails closed when the resolver is unreachable.
+ * ponytail: the fetch below re-resolves, so a rebinding DNS server could still race this check.
+ */
+async function assertPublicHost(hostname: string, title: string): Promise<void> {
+  const h = hostname.replace(/^\[|\]$/g, "");
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(h) || h.includes(":")) return;
+  let ips: string[];
+  try {
+    ips = (await Promise.all([resolve(h, "A"), resolve(h, "AAAA")])).flat();
+  } catch {
+    throw new HttpError(`Could not verify ${title} link`, 400);
+  }
+  if (ips.length === 0 || ips.some(isBlockedIp)) throw new HttpError(`${title} link is not allowed`, 400);
+}
+
 async function readCapped(res: Response, max: number): Promise<Uint8Array> {
   if (!res.body) return new Uint8Array();
   const reader = res.body.getReader();
@@ -90,6 +120,7 @@ export async function fetchImportFile(
   if (!isHttpsFileUrl(rawUrl)) throw new HttpError(`${q.title} must be an https:// link`, 400);
   const url = new URL(rawUrl.trim());
   if (isBlockedImportHost(url.hostname)) throw new HttpError(`${q.title} link is not allowed`, 400);
+  await assertPublicHost(url.hostname, q.title);
   const max = q.maxSizeMb * 1024 * 1024;
   let res: Response;
   try {

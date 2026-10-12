@@ -1,4 +1,5 @@
 import { insertAudit } from "../audit";
+import { requireOwner } from "../authz";
 import { HttpError } from "../errors";
 import { env } from "../http";
 import { checkPassword, DUMMY_HASH, hashPassword, verifyPassword } from "../password";
@@ -69,6 +70,7 @@ export function me(user: SessionUser) {
 }
 
 export async function createInvite(user: SessionUser) {
+  requireOwner(user);
   const token = generateToken();
   await env.DB.prepare("INSERT INTO invites (id, token_hash, created_by, expires_at) VALUES (?, ?, ?, ?)")
     .bind(crypto.randomUUID(), hashToken(token), user.id, Date.now() + 7 * 24 * 60 * 60 * 1000)
