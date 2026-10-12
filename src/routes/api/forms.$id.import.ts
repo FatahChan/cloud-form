@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { authed } from "~/server/context";
-import { authMiddleware } from "~/server/middleware";
+import { authMiddleware, sameOrigin } from "~/server/middleware";
 import { json } from "~/server/http";
 import { readJson, run } from "~/server/serve";
 import * as submissions from "~/server/services/submissions";
@@ -23,7 +23,7 @@ function stringifyRows(rows: z.infer<typeof bodySchema>["rows"]): Record<string,
 
 export const Route = createFileRoute("/api/forms/$id/import")({
   server: {
-    middleware: [authMiddleware],
+    middleware: [sameOrigin, authMiddleware],
     handlers: {
       POST: async ({ request, params, context }) =>
         run(async () => {

@@ -1,12 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { authed } from "~/server/context";
-import { authMiddleware } from "~/server/middleware";
+import { authMiddleware, sameOrigin } from "~/server/middleware";
 import { readJson, serve } from "~/server/serve";
 import * as forms from "~/server/services/forms";
 
 export const Route = createFileRoute("/api/forms/$id/publish")({
   server: {
-    middleware: [authMiddleware],
+    middleware: [sameOrigin, authMiddleware],
     handlers: {
       POST: async ({ request, params, context }) =>
         serve(async () => {
